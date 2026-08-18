@@ -8,7 +8,16 @@ local ADDON, ns = ...
 _G.SlootTracker = ns
 
 ns.ADDON = ADDON
-ns.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "1.0.0"
+local function Meta(field, fallback)
+	if C_AddOns and C_AddOns.GetAddOnMetadata then
+		local value = C_AddOns.GetAddOnMetadata(ADDON, field)
+		if value and value ~= "" then return value end
+	end
+	return fallback
+end
+
+ns.version = Meta("Version", "1.0.0")
+ns.author  = Meta("Author", "BadHeffer")
 ns.build = select(4, GetBuildInfo())
 
 --------------------------------------------------------------------------

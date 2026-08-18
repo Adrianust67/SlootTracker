@@ -538,8 +538,20 @@ function UI:Build()
 	frame.title:SetPoint("LEFT", 6, 0)
 	frame.title:SetText("|cff5bc0f5Sloot Tracker|r")
 
+	-- Version and author, pulled from the TOC so they can never drift out of
+	-- sync with what was actually packaged. Sits at the right end of the title
+	-- bar, clear of the close button.
+	frame.credit = titleBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	frame.credit:SetPoint("RIGHT", -28, 0)
+	frame.credit:SetJustifyH("RIGHT")
+	frame.credit:SetWordWrap(false)
+	frame.credit:SetText(("v%s  |cff707070by|r %s"):format(ns.version, ns.author))
+
 	frame.zoneLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	frame.zoneLabel:SetPoint("LEFT", frame.title, "RIGHT", 10, 0)
+	frame.zoneLabel:SetPoint("RIGHT", frame.credit, "LEFT", -10, 0)
+	frame.zoneLabel:SetJustifyH("LEFT")
+	frame.zoneLabel:SetWordWrap(false)
 
 	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", -4, -4)
@@ -628,15 +640,12 @@ function UI:Build()
 	end)
 	frame.search = search
 
-	local config = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-	config:SetSize(80, 22)
-	config:SetPoint("TOPRIGHT", -16, -38)
-	config:SetText("Settings")
-	config:SetScript("OnClick", function() ns:Fire("OPEN_CONFIG") end)
-
+	-- No Settings button here on purpose: everything configurable lives in the
+	-- game's own options panel (Esc > Options > AddOns > Sloot Tracker), or
+	-- /sloot config, or right-clicking the minimap button.
 	local rescan = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 	rescan:SetSize(80, 22)
-	rescan:SetPoint("RIGHT", config, "LEFT", -4, 0)
+	rescan:SetPoint("TOPRIGHT", -16, -38)
 	rescan:SetText("Rescan")
 	rescan:SetScript("OnClick", function() ns:Fire("REQUEST_SCAN", true) end)
 
@@ -706,13 +715,22 @@ function UI:Build()
 	-- Footer
 	--------------------------------------------------------------------
 
-	frame.footer = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	frame.footer:SetPoint("BOTTOMLEFT", 16, 12)
-	frame.footer:SetJustifyH("LEFT")
-
+	-- The status string is created first so the counts string can anchor its
+	-- right edge to it. Both are non-wrapping with a bounded width, so a long
+	-- category list truncates with an ellipsis instead of sliding underneath
+	-- the status text.
 	frame.warning = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	frame.warning:SetPoint("BOTTOMRIGHT", -30, 12)
 	frame.warning:SetJustifyH("RIGHT")
+	frame.warning:SetWordWrap(false)
+	frame.warning:SetHeight(14)
+
+	frame.footer = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	frame.footer:SetPoint("BOTTOMLEFT", 16, 12)
+	frame.footer:SetPoint("BOTTOMRIGHT", frame.warning, "BOTTOMLEFT", -12, 0)
+	frame.footer:SetJustifyH("LEFT")
+	frame.footer:SetWordWrap(false)
+	frame.footer:SetHeight(14)
 
 	frame:SetScript("OnSizeChanged", function() LayoutRows() end)
 	frame:Hide()
@@ -759,14 +777,18 @@ function UI:Refresh()
 			math.floor(c[1] * 255), math.floor(c[2] * 255), math.floor(c[3] * 255),
 			item.count, item.key))
 	end
+	-- Truncation eats the right-hand end, so the most valuable numbers go
+	-- first and the long per-category breakdown trails.
 	local pointsText = ""
 	if (ns.Priority.pointsAvailable or 0) > 0 then
-		pointsText = ("  |  |cffffd100%d achievement points in reach|r"):format(ns.Priority.pointsAvailable)
+		pointsText = ("|cffffd100%d pts|r  |  "):format(ns.Priority.pointsAvailable)
 	end
-	frame.footer:SetText(("%d shown  |  %s%s"):format(#displayed, table.concat(parts, "  "), pointsText))
+	frame.footer:SetText(("%d shown  |  %s%s"):format(
+		#displayed, pointsText, table.concat(parts, "  ")))
 
 	if ns.Roster:AccountDataIsThin() then
-		frame.warning:SetText("|cffff8040Account scope: only 1 character recorded so far|r")
+		-- Kept short: this shares the bottom bar with the category counts.
+		frame.warning:SetText("|cffff8040account scope: 1 char recorded|r")
 	elseif ns.Priority.scanning then
 		frame.warning:SetText("|cff888888scanning...|r")
 	else
