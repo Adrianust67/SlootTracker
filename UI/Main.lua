@@ -15,8 +15,19 @@ local UI = {}
 ns.UI = UI
 
 local ROW_HEIGHT     = 32
-local LIST_TOP_INSET = 168
 local LIST_BOTTOM    = 30
+
+-- Filter grid geometry. The number of columns is derived from the window
+-- width at layout time rather than hardcoded, so narrowing the window reflows
+-- the checkboxes instead of pushing the rightmost column off the edge.
+local FILTER_TOP   = 68    -- distance from the top of the frame
+local FILTER_COL_W = 128
+local FILTER_ROW_H = 22
+local ROUTE_H      = 42
+
+-- Distance from the top of the frame to the top of the list. Recomputed by
+-- LayoutPanels because the filter block grows taller as the window narrows.
+local listTopInset = 168
 
 local CATEGORY_COLORS = {
 	achievements = { 0.95, 0.80, 0.20 },
@@ -95,23 +106,17 @@ local function CreateSelector(parent, width, getLabel, buildMenu, cycle)
 end
 
 --------------------------------------------------------------------------
--- Filtering / searching the scored list
+-- Filtering the scored list
 --------------------------------------------------------------------------
-
-local searchText = ""
 
 local function RebuildDisplayed()
 	wipe(displayed)
 	local ignored = ns.db.ignored or {}
-	local needle = searchText ~= "" and searchText:lower() or nil
 
 	for _, entry in ipairs(ns.Priority.entries) do
-		local ok = not ignored[entry.key]
-		if ok and needle then
-			local hay = ((entry.name or "") .. " " .. (entry.zoneName or "") .. " " .. (entry.detail or "")):lower()
-			ok = hay:find(needle, 1, true) ~= nil
+		if not ignored[entry.key] then
+			table.insert(displayed, entry)
 		end
-		if ok then table.insert(displayed, entry) end
 	end
 end
 
@@ -141,6 +146,9 @@ local function ShowRowTooltip(row)
 			line = ("%s  (%.1f, %.1f)"):format(line, entry.x * 100, entry.y * 100)
 		end
 		GameTooltip:AddDoubleLine("Location", line, 0.6, 0.6, 0.6, 1, 1, 1)
+		if entry.approximate then
+			GameTooltip:AddLine("Approximate - head to this area and look around.", 0.7, 0.7, 0.7)
+		end
 	end
 	local dist = FormatDistance(entry)
 	if dist then
@@ -416,8 +424,46 @@ local function UpdateScroll()
 	end
 end
 
+-- Reflow the filter checkboxes for the current width, then push the route
+-- strip and the list down to clear however many rows that produced.
+local function LayoutPanels()
+	if not frame or not frame.filterOrder then return end
+
+	local usable = frame:GetWidth() - 32
+	local columns = math.max(2, math.floor(usable / FILTER_COL_W))
+	local gridRows = math.ceil(#frame.filterOrder / columns)
+
+	for i, check in ipairs(frame.filterOrder) do
+		local col = (i - 1) % columns
+		local row = math.floor((i - 1) / columns)
+		check:ClearAllPoints()
+		check:SetPoint("TOPLEFT", 16 + col * FILTER_COL_W, -(FILTER_TOP + row * FILTER_ROW_H))
+	end
+
+	local filterBottom = FILTER_TOP + gridRows * FILTER_ROW_H
+
+	if frame.route then
+		frame.route:ClearAllPoints()
+		frame.route:SetPoint("TOPLEFT", 16, -(filterBottom + 6))
+		frame.route:SetPoint("TOPRIGHT", -16, -(filterBottom + 6))
+	end
+
+	listTopInset = filterBottom + 6 + ROUTE_H + 8
+
+	if frame.list then
+		frame.list:ClearAllPoints()
+		frame.list:SetPoint("TOPLEFT", 14, -listTopInset)
+		frame.list:SetPoint("BOTTOMRIGHT", -30, LIST_BOTTOM)
+	end
+	if slider then
+		slider:ClearAllPoints()
+		slider:SetPoint("TOPRIGHT", -14, -listTopInset)
+		slider:SetPoint("BOTTOMRIGHT", -14, LIST_BOTTOM)
+	end
+end
+
 local function LayoutRows()
-	local height = frame:GetHeight() - LIST_TOP_INSET - LIST_BOTTOM
+	local height = frame:GetHeight() - listTopInset - LIST_BOTTOM
 	visibleRows = math.max(1, math.floor(height / ROW_HEIGHT))
 
 	for i = 1, visibleRows do
@@ -506,8 +552,9 @@ function UI:Build()
 	frame:EnableMouse(true)
 	frame:SetClampedToScreen(true)
 	frame:SetFrameStrata("MEDIUM")
-	-- Low minimums so it can be shrunk down to a small corner panel.
-	if frame.SetResizeBounds then frame:SetResizeBounds(420, 240) end
+	-- Low minimums so it can be shrunk down to a small corner panel. The height
+	-- floor allows for the filter grid growing to four rows at minimum width.
+	if frame.SetResizeBounds then frame:SetResizeBounds(420, 320) end
 
 	if frame.SetBackdrop then
 		frame:SetBackdrop({
@@ -622,29 +669,6 @@ function UI:Build()
 		end)
 	frame.reach:SetPoint("LEFT", frame.scope, "RIGHT", 6, 0)
 
-	local search, templated = ns.SafeFrame("EditBox", nil, frame, "SearchBoxTemplate")
-	search:SetSize(160, 22)
-	search:SetPoint("LEFT", frame.reach, "RIGHT", 8, 0)
-	search:SetAutoFocus(false)
-	if not templated then
-		-- Plain edit box fallback: give it a readable background and border.
-		search:SetFontObject("ChatFontNormal")
-		search:SetTextInsets(6, 6, 0, 0)
-		local bg = search:CreateTexture(nil, "BACKGROUND")
-		bg:SetAllPoints()
-		bg:SetColorTexture(0, 0, 0, 0.5)
-		search:SetScript("OnEscapePressed", search.ClearFocus)
-	end
-	search:SetScript("OnTextChanged", function(self, userInput)
-		if templated and SearchBoxTemplate_OnTextChanged then
-			SearchBoxTemplate_OnTextChanged(self, userInput)
-		end
-		searchText = self:GetText() or ""
-		RebuildDisplayed()
-		UpdateScroll()
-	end)
-	frame.search = search
-
 	-- No Settings button here on purpose: everything configurable lives in the
 	-- game's own options panel (Esc > Options > AddOns > Sloot Tracker), or
 	-- /sloot config, or right-clicking the minimap button.
@@ -659,13 +683,11 @@ function UI:Build()
 	--------------------------------------------------------------------
 
 	frame.filterButtons = {}
+	frame.filterOrder = {}
 	for i, def in ipairs(FILTER_ORDER) do
-		local col = (i - 1) % 5
-		local rowIdx = math.floor((i - 1) / 5)
-
 		local check = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
 		check:SetSize(22, 22)
-		check:SetPoint("TOPLEFT", 16 + col * 152, -68 - rowIdx * 22)
+		-- Positioned by LayoutPanels, not here.
 		check.text = check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		check.text:SetPoint("LEFT", check, "RIGHT", 1, 0)
 		check.text:SetText(def.label)
@@ -678,6 +700,7 @@ function UI:Build()
 			ns:Fire("REQUEST_SCAN", true)
 		end)
 		frame.filterButtons[def.key] = check
+		frame.filterOrder[i] = check
 	end
 
 	--------------------------------------------------------------------
@@ -738,6 +761,7 @@ function UI:Build()
 	frame.footer:SetHeight(14)
 
 	frame:SetScript("OnSizeChanged", function(self)
+		LayoutPanels()
 		LayoutRows()
 		-- Persist continuously, not just on grip release, so a size set by any
 		-- means (including an external layout tool) survives a reload.
@@ -756,6 +780,7 @@ function UI:Build()
 	frame.restoreShown = wasShown
 
 	self:SyncFilters()
+	LayoutPanels()
 	LayoutRows()
 	return frame
 end

@@ -8,8 +8,10 @@
 	character satisfied it - so character scope can still tell you which
 	corners of the map this particular character has never walked into.
 
-	Blizzard exposes no coordinates for an unexplored area, so these entries
-	carry a zone but no pin. They rank by zone, not by yards.
+	Blizzard exposes no coordinates for an unexplored area, so positions are
+	recovered by sampling a grid across the map - see "Finding somewhere to
+	actually walk" below. That is what lets these entries join the route
+	instead of only ranking by zone.
 ----------------------------------------------------------------------------]]
 
 local ADDON, ns = ...
@@ -81,6 +83,126 @@ function Exploration:Prepare()
 end
 
 --------------------------------------------------------------------------
+-- Finding somewhere to actually walk
+--
+-- Blizzard exposes no coordinates for an unexplored area, which is why these
+-- entries never used to appear in the route. We can recover positions by
+-- sampling a grid across the map and asking what is at each point:
+--
+--   * GetExploredAreaIDsAtPosition returns area ids at a coordinate. When it
+--     reports an area matching an incomplete criterion, we can average those
+--     points into a real centroid for that named subzone - the ideal case.
+--   * Where it returns nothing, that point is map with no explored overlay on
+--     it. Clustering those gaps gives approximate "unexplored ground" targets.
+--
+-- The same sampling pass feeds both, and results are cached per map because
+-- the grid costs a few hundred API calls.
+--------------------------------------------------------------------------
+
+local GRID = 22
+local CLUSTER_RADIUS = 0.13
+local MAX_GENERIC = 4
+
+local targetCache = {}
+
+local function ClusterGaps(gaps)
+	local clusters = {}
+	local used = {}
+
+	for _ = 1, MAX_GENERIC do
+		-- Seed on the gap point with the most neighbours, so clusters form
+		-- around the largest unexplored blobs rather than stray edge samples.
+		local bestIdx, bestCount = nil, 0
+		for i, p in ipairs(gaps) do
+			if not used[i] then
+				local count = 0
+				for j, q in ipairs(gaps) do
+					if not used[j] then
+						local dx, dy = p.x - q.x, p.y - q.y
+						if (dx * dx + dy * dy) <= (CLUSTER_RADIUS * CLUSTER_RADIUS) then
+							count = count + 1
+						end
+					end
+				end
+				if count > bestCount then bestIdx, bestCount = i, count end
+			end
+		end
+
+		-- A lone sample or two is noise, not an unexplored region.
+		if not bestIdx or bestCount < 3 then break end
+
+		local seed = gaps[bestIdx]
+		local sx, sy, n = 0, 0, 0
+		for j, q in ipairs(gaps) do
+			if not used[j] then
+				local dx, dy = seed.x - q.x, seed.y - q.y
+				if (dx * dx + dy * dy) <= (CLUSTER_RADIUS * CLUSTER_RADIUS) then
+					used[j] = true
+					sx, sy, n = sx + q.x, sy + q.y, n + 1
+				end
+			end
+		end
+		if n > 0 then
+			table.insert(clusters, { x = sx / n, y = sy / n, weight = n })
+		end
+	end
+
+	return clusters
+end
+
+local function ComputeTargets(mapID, todo)
+	local cached = targetCache[mapID]
+	if cached then return cached end
+
+	local byArea = {}
+	for _, area in ipairs(todo) do
+		if area.areaID and area.areaID > 0 then byArea[area.areaID] = area.index end
+	end
+
+	local sums, gaps = {}, {}
+
+	for gx = 1, GRID do
+		for gy = 1, GRID do
+			local x = (gx - 0.5) / GRID
+			local y = (gy - 0.5) / GRID
+
+			local ids = ns.Try(C_MapExplorationInfo.GetExploredAreaIDsAtPosition,
+				mapID, CreateVector2D(x, y))
+
+			if type(ids) == "table" and #ids > 0 then
+				-- Points covered by an area we have already explored are simply
+				-- dropped; only ones matching an outstanding criterion count.
+				for _, areaID in ipairs(ids) do
+					local index = byArea[areaID]
+					if index then
+						local s = sums[index]
+						if not s then s = { x = 0, y = 0, n = 0 }; sums[index] = s end
+						s.x, s.y, s.n = s.x + x, s.y + y, s.n + 1
+					end
+				end
+			else
+				-- No overlay here at all: candidate unexplored ground.
+				table.insert(gaps, { x = x, y = y })
+			end
+		end
+	end
+
+	local result = { precise = {}, generic = {} }
+	for index, s in pairs(sums) do
+		if s.n > 0 then
+			result.precise[index] = { x = s.x / s.n, y = s.y / s.n }
+		end
+	end
+
+	if next(result.precise) == nil and #gaps > 0 then
+		result.generic = ClusterGaps(gaps)
+	end
+
+	targetCache[mapID] = result
+	return result
+end
+
+--------------------------------------------------------------------------
 -- Scan
 --------------------------------------------------------------------------
 
@@ -133,6 +255,13 @@ function Exploration:Scan(ctx)
 				ns.Roster:RecordExplored(mapID, charDone)
 
 				local zoneName = ns.Location:GetMapName(mapID)
+
+				-- Only worth the sampling cost for maps the route can reach.
+				local targets
+				local _, tier = ns.Location:InReach(mapID)
+				if #todo > 0 and (tier == "here" or tier == "zone") then
+					targets = ns.Try(ComputeTargets, mapID, todo)
+				end
 				for _, area in ipairs(todo) do
 					local detail = ("%s - %d of %d areas found"):format(achName or "Exploration", doneCount, num)
 					if achPoints and achPoints > 0 then
@@ -141,6 +270,9 @@ function Exploration:Scan(ctx)
 					if area.doneByAlt then
 						detail = detail .. (" |cff888888(found by %s)|r"):format(area.altName or "an alt")
 					end
+
+					-- A real centroid for this named subzone, when we found one.
+					local pin = targets and targets.precise and targets.precise[area.index]
 
 					table.insert(out, {
 						key       = ("explore:%d:%d"):format(achID, area.index),
@@ -151,6 +283,8 @@ function Exploration:Scan(ctx)
 						name      = area.name,
 						icon      = "Interface\\Icons\\INV_Misc_Map_01",
 						mapID     = mapID,
+						x         = pin and pin.x or nil,
+						y         = pin and pin.y or nil,
 						zoneName  = zoneName,
 						have      = doneCount,
 						need      = num,
@@ -164,9 +298,59 @@ function Exploration:Scan(ctx)
 						doneByAlt = area.doneByAlt or nil,
 					})
 				end
+
+				-- Fallback: the client would not tell us which area sits at
+				-- which coordinate, so we cannot pin the named subzones. Emit
+				-- generic "unexplored ground" stops instead, which is enough
+				-- for the route to send you somewhere useful. Pairing an
+				-- arbitrary cluster with a specific subzone name would be a
+				-- guess dressed up as a fact, so we do not do that.
+				if targets and #targets.generic > 0 then
+					local names = {}
+					for i = 1, math.min(#todo, 3) do table.insert(names, todo[i].name) end
+
+					for i, spot in ipairs(targets.generic) do
+						table.insert(out, {
+							key       = ("explore:area:%d:%d"):format(mapID, i),
+							module    = "exploration",
+							category  = "exploration",
+							id        = achID,
+							name      = "Unexplored ground",
+							icon      = "Interface\\Icons\\INV_Misc_Map_01",
+							mapID     = mapID,
+							x = spot.x, y = spot.y,
+							zoneName  = zoneName,
+							have      = doneCount,
+							need      = num,
+							points    = achPoints,
+							detail    = ("%d areas left in %s - still missing %s%s"):format(
+								#todo, zoneName, table.concat(names, ", "),
+								#todo > #names and ("  (+%d more)"):format(#todo - #names) or ""),
+							link      = ns.Try(GetAchievementLink, achID),
+							typeLabel = "Unexplored",
+							approximate = true,
+							sharedCriteria = true,
+						})
+					end
+				end
 			end
 		end
 	end
 
 	return out
 end
+
+--------------------------------------------------------------------------
+-- Cache invalidation
+--
+-- Sampled targets go stale the moment you walk into one of the areas, and
+-- the grid is too expensive to recompute on every scan.
+--------------------------------------------------------------------------
+
+ns:RegisterEvent("CRITERIA_UPDATE", function()
+	wipe(targetCache)
+end)
+
+ns:On("ZONE_CHANGED", function()
+	wipe(targetCache)
+end)
