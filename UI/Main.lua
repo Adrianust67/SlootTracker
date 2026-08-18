@@ -691,7 +691,11 @@ function UI:Build()
 	for i, def in ipairs(FILTER_ORDER) do
 		local check = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
 		check:SetSize(22, 22)
-		-- Positioned by LayoutPanels, not here.
+		-- LayoutPanels reflows these, but anchor them here too: a frame with no
+		-- anchor renders nowhere at all, so if layout ever fails to run the
+		-- checkboxes must not vanish and take the only recovery UI with them.
+		check:SetPoint("TOPLEFT", 16 + ((i - 1) % 5) * FILTER_COL_W,
+			-(FILTER_TOP + math.floor((i - 1) / 5) * FILTER_ROW_H))
 		check.text = check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		check.text:SetPoint("LEFT", check, "RIGHT", 1, 0)
 		check.text:SetText(def.label)
@@ -725,12 +729,12 @@ function UI:Build()
 	--------------------------------------------------------------------
 
 	local list = CreateFrame("Frame", nil, frame)
-	list:SetPoint("TOPLEFT", 14, -LIST_TOP_INSET)
+	list:SetPoint("TOPLEFT", 14, -listTopInset)
 	list:SetPoint("BOTTOMRIGHT", -30, LIST_BOTTOM)
 	frame.list = list
 
 	slider = ns.CreateVerticalScrollBar(frame)
-	slider:SetPoint("TOPRIGHT", -14, -LIST_TOP_INSET)
+	slider:SetPoint("TOPRIGHT", -14, -listTopInset)
 	slider:SetPoint("BOTTOMRIGHT", -14, LIST_BOTTOM)
 	slider:SetScript("OnValueChanged", function(_, value)
 		scrollOffset = math.floor(value + 0.5)
@@ -760,7 +764,9 @@ function UI:Build()
 	-- An empty list is nearly always the result of the player's own filters,
 	-- so say which ones rather than showing a blank box.
 	frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	frame.empty:SetPoint("CENTER", frame.list, "CENTER", 0, 0)
+	-- Anchored to the frame, not the list: the list's own anchors are rewritten
+	-- by LayoutPanels, and this message must survive a layout that went wrong.
+	frame.empty:SetPoint("CENTER", frame, "CENTER", 0, -10)
 	frame.empty:SetWidth(360)
 	frame.empty:SetJustifyH("CENTER")
 	frame.empty:SetTextColor(0.7, 0.7, 0.7)
@@ -917,8 +923,12 @@ function UI:Refresh()
 
 	RebuildDisplayed()
 	UpdateScroll()
-	UpdateRoute()
-	UI:UpdateEmptyState()
+
+	-- Before the route strip, and isolated from it. This message is the only
+	-- thing standing between an empty list and a user with no idea why, so an
+	-- error anywhere else must not be able to suppress it.
+	pcall(UI.UpdateEmptyState, UI)
+	pcall(UpdateRoute)
 
 	-- Footer: per-category counts, highest first.
 	local parts, ordered = {}, {}

@@ -317,12 +317,25 @@ function ns:On(message, fn)
 	table.insert(callbacks[message], fn)
 end
 
+-- Errors used to go to ns:Debug, which prints nothing unless debug mode is on.
+-- That turned a failure to build the window into a silently half-drawn frame
+-- with no clue what went wrong. Real errors are now always reported, throttled
+-- per site so a per-frame failure cannot flood the chat.
+local reported = {}
+
+function ns.ReportError(where, err)
+	if reported[where] then return end
+	reported[where] = true
+	print(("|cffff5555Sloot Tracker error|r in %s: %s"):format(where, tostring(err)))
+	print("|cff888888Please report this. Further errors here are suppressed.|r")
+end
+
 function ns:Fire(message, ...)
 	local list = callbacks[message]
 	if not list then return end
 	for i = 1, #list do
 		local ok, err = pcall(list[i], ...)
-		if not ok then ns:Debug("callback error on", message, err) end
+		if not ok then ns.ReportError("callback " .. tostring(message), err) end
 	end
 end
 
@@ -338,7 +351,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
 	if not list then return end
 	for i = 1, #list do
 		local ok, err = pcall(list[i], event, ...)
-		if not ok then ns:Debug("event error on", event, err) end
+		if not ok then ns.ReportError("event " .. tostring(event), err) end
 	end
 end)
 
