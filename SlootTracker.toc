@@ -6,7 +6,7 @@
 ## IconTexture: Interface\Icons\INV_Misc_Map02
 ## SavedVariables: SlootTrackerDB
 ## SavedVariablesPerCharacter: SlootTrackerCharDB
-## OptionalDeps: TomTom
+## OptionalDeps: TomTom, EllesmereUI
 ## Category-enUS: Collections
 ## AllowLoadGameType: retail
 
@@ -26,3 +26,5 @@ Modules\GuildRadar.lua
 
 UI\Main.lua
 UI\Config.lua
+
+Integrations\EllesmereUI.lua

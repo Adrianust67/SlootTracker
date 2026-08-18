@@ -764,6 +764,20 @@ end
 -- Public refresh entry points
 --------------------------------------------------------------------------
 
+-- Re-apply the stored position. Used by the layout-tool integration, which
+-- writes into the same db.window table the frame's own drag handler uses, so
+-- there is only ever one source of truth for where the window sits.
+function UI:ApplyStoredPosition()
+	if not frame then return end
+	local w = ns.db.window
+	frame:ClearAllPoints()
+	frame:SetPoint(w.point or "CENTER", UIParent, w.relPoint or "CENTER", w.x or 0, w.y or 0)
+end
+
+function UI:GetFrame()
+	return frame
+end
+
 -- Escape-to-close is opt-in. UISpecialFrames is a plain global array, so the
 -- entry is added or stripped whenever the setting changes.
 function UI:ApplyEscapeClose()
