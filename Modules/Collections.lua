@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Modules/Collections.lua
+	SlootTracker - Modules/Collections.lua
 
 	Uncollected mounts, toys, battle pets, transmog sets, heirlooms and titles.
 
@@ -219,7 +219,7 @@ local function BuildPetSpecies()
 
 	local species = {}
 	local id = 0
-	ns:RunTask("ZC:PetSpecies", function()
+	ns:RunTask("ST:PetSpecies", function()
 		local stop = math.min(id + 250, MAX_SPECIES_ID)
 		while id < stop do
 			id = id + 1

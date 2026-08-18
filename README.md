@@ -1,4 +1,4 @@
-# ZoneComplete
+# Sloot Tracker
 
 A location-aware completion tracker for World of Warcraft Retail.
 
@@ -11,13 +11,13 @@ Built and tested against client **12.1.0 (Midnight)**, Interface `120100`.
 
 ## Install
 
-Copy the `ZoneComplete` folder into:
+Copy the `SlootTracker` folder into:
 
 ```
 C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\
 ```
 
-Then `/reload` or restart the game. The folder name must stay `ZoneComplete`
+Then `/reload` or restart the game. The folder name must stay `SlootTracker`
 so it matches the `.toc`.
 
 ---
@@ -41,14 +41,17 @@ so it matches the `.toc`.
 ## Using it
 
 - `/zc` — open the window (or the minimap button)
-- `/zc scan` — force a rescan
-- `/zc auto` — scope per category (the default)
-- `/zc char` / `/zc account` — force one scope everywhere
-- `/zc alert off|all|high|test` — quest alerts (all quests, or level-appropriate only)
-- `/zc reach zone|continent|world` — how far out to look
-- `/zc route` — print the planned route to chat
-- `/zc config` — settings
-- `/zc reset` — wipe derived indexes and rebuild
+- `/sloot scan` — force a rescan
+- `/sloot auto` — scope per category (the default)
+- `/sloot char` / `/sloot account` — force one scope everywhere
+- `/sloot alert off|all|high|test` — quest alerts (all quests, or level-appropriate only)
+- `/sloot guild on|off|test|reset` — nearby guild member detection
+- `/sloot guild mode zone|close|both` — how "nearby" is measured
+- `/sloot guild out self|guild|say|yell|party|emote` — where it announces
+- `/sloot reach zone|continent|world` — how far out to look
+- `/sloot route` — print the planned route to chat
+- `/sloot config` — settings
+- `/sloot reset` — wipe derived indexes and rebuild
 
 In the list: **left-click** sets a waypoint, **shift-click** links the item in
 chat, **right-click** opens a menu (waypoint, open in the game's own UI, track,
@@ -158,8 +161,52 @@ in your log, or both. Output is any combination of an on-screen banner
 (right-drag to move it, click to open the list), a chat line, and a sound.
 
 Alerts are throttled per zone (default 5 minutes), never fire in combat, and
-wait a few seconds after a zone change so the quest log has settled. `/zc alert
+wait a few seconds after a zone change so the quest log has settled. `/sloot alert
 test` fires one immediately for the zone you're standing in.
+
+---
+
+## Nearby guild members
+
+Spots guild members near you and announces it. Useful when you're clearing a
+zone and someone else is working the same rares or treasures.
+
+Two detection methods, because the API only offers a choice between broad and
+precise:
+
+- **Zone** — the guild roster reports each online member's current zone, so it
+  compares that against yours. Catches everyone in the zone, but zone is as
+  fine-grained as the roster gets.
+- **Nameplate range** — `NAME_PLATE_UNIT_ADDED` fires for players who come into
+  nameplate range (roughly 40–60 yards) and the game will tell us whether
+  they're guilded to you. Genuinely close by, but only catches people you can
+  actually see.
+- **Both** — runs both, and the closer detection wins for a given player.
+
+The message is a template with tokens: `%name%`, `%zone%`, `%count%` (things
+you have to do here), `%points%` (achievement points in reach), and `%how%`
+(*right next to you* / *in this zone*).
+
+### About the output channel
+
+**The default is your own chat frame, and nothing leaves your client.** You can
+switch it to Guild, Say, Yell, Party or Emote, and it will send genuine chat
+messages from your character.
+
+That is worth being deliberate about. An addon that auto-broadcasts to `/say`
+every time a guildmate walks past is a fast route to being muted or reported,
+and it's the kind of thing that annoys people quietly. So the feature is built
+to be hard to abuse:
+
+- private output by default, broadcasting is opt-in and visibly warned about
+- one announcement per check, never a burst
+- a per-player cooldown (default 10 minutes) so the same person can't repeat
+- a global floor between any two announcements (default 20 seconds), well clear
+  of the game's chat throttle
+- Party output falls back to private when you're not in a party, rather than
+  silently failing
+
+If you do broadcast, consider Emote — it reads as flavour rather than spam.
 
 ---
 
@@ -214,7 +261,7 @@ a patch and never otherwise.
 ## File layout
 
 ```
-ZoneComplete.toc
+SlootTracker.toc
 Core/Init.lua          namespace, saved variables, event bus, task runner
 Core/Location.lua      map index, player position, distance, reach
 Core/Roster.lua        per-character records, account aggregation
@@ -226,6 +273,7 @@ Modules/Collections.lua
 Modules/Quests.lua
 Modules/Treasures.lua
 Modules/Alerts.lua     quest alerts (banner, chat, sound)
+Modules/GuildRadar.lua nearby guild member detection
 UI/Main.lua            window, filters, route strip, list
 UI/Config.lua          settings panel
 ```

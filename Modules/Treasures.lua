@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Modules/Treasures.lua
+	SlootTracker - Modules/Treasures.lua
 
 	Things that are physically on the map right now: area points of interest
 	(dig sites, treasure chests, event objectives) and live vignettes (rare

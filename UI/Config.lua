@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - UI/Config.lua
+	SlootTracker - UI/Config.lua
 
 	Settings panel. Registered with the modern Settings API where available,
 	falling back to the old InterfaceOptions registry.
@@ -123,8 +123,8 @@ end
 function Config:Build()
 	if self.panel then return self.panel end
 
-	local panel = CreateFrame("Frame", "ZoneCompleteConfigPanel")
-	panel.name = "ZoneComplete"
+	local panel = CreateFrame("Frame", "SlootTrackerConfigPanel")
+	panel.name = "Sloot Tracker"
 	self.panel = panel
 
 	local scroll, templated = ns.SafeFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
@@ -133,6 +133,7 @@ function Config:Build()
 
 	local content = CreateFrame("Frame", nil, scroll)
 	content:SetSize(PANEL_WIDTH, 1600)
+	content.controls = {}   -- sync callbacks, populated by the widget helpers
 	scroll:SetScrollChild(content)
 
 	if not templated then
@@ -423,6 +424,144 @@ function Config:Build()
 
 	----------------------------------------------------------------
 	y = y - 8
+	y = MakeHeader(content, "Nearby guild members", y)
+
+	local radarNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	radarNote:SetPoint("TOPLEFT", 24, y)
+	radarNote:SetWidth(PANEL_WIDTH - 80)
+	radarNote:SetJustifyH("LEFT")
+	radarNote:SetText("Spots guild members near you and announces it. Announcing to a real chat "
+		.. "channel sends actual messages from your character - keep it private unless you mean it.")
+	y = y - 34
+
+	y = MakeCheck(content, "Detect nearby guild members", nil, y,
+		function() return ns.db.guildRadar.enabled end,
+		function(v) ns.db.guildRadar.enabled = v end)
+
+	-- Detection mode
+	local modeButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+	modeButton:SetPoint("TOPLEFT", 28, y)
+	modeButton:SetSize(240, 22)
+	local MODE_LABEL = {
+		zone  = "Detect: anywhere in my zone",
+		close = "Detect: within nameplate range",
+		both  = "Detect: zone and nameplate range",
+	}
+	local function SyncMode() modeButton:SetText(MODE_LABEL[ns.db.guildRadar.mode] or "Detect") end
+	modeButton:SetScript("OnClick", function()
+		local order = { zone = "close", close = "both", both = "zone" }
+		ns.db.guildRadar.mode = order[ns.db.guildRadar.mode] or "both"
+		SyncMode()
+	end)
+	SyncMode()
+	table.insert(content.controls, SyncMode)
+	y = y - 28
+
+	-- Output channel
+	local outButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+	outButton:SetPoint("TOPLEFT", 28, y)
+	outButton:SetSize(240, 22)
+	local function SyncOut()
+		outButton:SetText("Announce in: " .. ns.GuildRadar:OutputLabel(ns.db.guildRadar.output))
+	end
+	outButton:SetScript("OnClick", function(self)
+		if MenuUtil and MenuUtil.CreateContextMenu then
+			MenuUtil.CreateContextMenu(self, function(_, root)
+				root:CreateTitle("Announce in")
+				for _, def in ipairs(ns.GuildRadar.OUTPUTS) do
+					root:CreateButton(def.label, function()
+						ns.db.guildRadar.output = def.key
+						SyncOut()
+					end)
+				end
+			end)
+		else
+			local list = ns.GuildRadar.OUTPUTS
+			local index = 1
+			for i, def in ipairs(list) do
+				if def.key == ns.db.guildRadar.output then index = i end
+			end
+			ns.db.guildRadar.output = list[(index % #list) + 1].key
+			SyncOut()
+		end
+	end)
+	SyncOut()
+	table.insert(content.controls, SyncOut)
+
+	local outWarning = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	outWarning:SetPoint("LEFT", outButton, "RIGHT", 8, 0)
+	outWarning:SetText("|cffff8040sends real chat messages|r")
+	outWarning:SetShown(ns.db.guildRadar.output ~= "self")
+	table.insert(content.controls, function()
+		outWarning:SetShown(ns.db.guildRadar.output ~= "self")
+	end)
+	y = y - 30
+
+	local templateLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	templateLabel:SetPoint("TOPLEFT", 28, y)
+	templateLabel:SetText("Message")
+	y = y - 18
+
+	local templateBox, boxTemplated = ns.SafeFrame("EditBox", nil, content, "InputBoxTemplate")
+	if not boxTemplated then
+		templateBox:SetFontObject("ChatFontNormal")
+		templateBox:SetTextInsets(6, 6, 0, 0)
+		local boxBG = templateBox:CreateTexture(nil, "BACKGROUND")
+		boxBG:SetAllPoints()
+		boxBG:SetColorTexture(0, 0, 0, 0.5)
+	end
+	templateBox:SetPoint("TOPLEFT", 34, y)
+	templateBox:SetSize(PANEL_WIDTH - 110, 22)
+	templateBox:SetAutoFocus(false)
+	templateBox:SetText(ns.db.guildRadar.template or "")
+	templateBox:SetScript("OnEnterPressed", function(self)
+		ns.db.guildRadar.template = self:GetText()
+		self:ClearFocus()
+		ns:Print("guild radar message updated.")
+	end)
+	templateBox:SetScript("OnEscapePressed", function(self)
+		self:SetText(ns.db.guildRadar.template or "")
+		self:ClearFocus()
+	end)
+	table.insert(content.controls, function() templateBox:SetText(ns.db.guildRadar.template or "") end)
+	y = y - 24
+
+	local tokenHelp = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	tokenHelp:SetPoint("TOPLEFT", 34, y)
+	tokenHelp:SetWidth(PANEL_WIDTH - 90)
+	tokenHelp:SetJustifyH("LEFT")
+	tokenHelp:SetText("Tokens: %name% %zone% %count% %points% %how%   -   press Enter to save")
+	y = y - 26
+
+	y = MakeSlider(content, "Do not repeat the same person for",
+		"Per-player cooldown, so one guildmate standing next to you does not repeat.",
+		y, 60, 3600, 60,
+		function() return ns.db.guildRadar.cooldown end,
+		function(v) ns.db.guildRadar.cooldown = v end,
+		"%s: %s seconds")
+
+	y = MakeSlider(content, "Minimum gap between any two announcements",
+		"A hard floor that applies across everyone, to stay well clear of the chat throttle.",
+		y, 5, 300, 5,
+		function() return ns.db.guildRadar.minInterval end,
+		function(v) ns.db.guildRadar.minInterval = v end,
+		"%s: %s seconds")
+
+	y = MakeCheck(content, "Play a sound when one is detected", nil, y,
+		function() return ns.db.guildRadar.sound end,
+		function(v) ns.db.guildRadar.sound = v end)
+
+	MakeButton(content, "Test now", y + 6, 24, 120, function()
+		ns:Fire("GUILD_RADAR_CHECK", true)
+	end)
+	MakeButton(content, "Clear cooldowns", y + 6, 152, 150, function()
+		ns:Fire("GUILD_RADAR_RESET")
+		ns:Print("guild radar cooldowns cleared.")
+	end)
+	y = y - 28
+
+	----------------------------------------------------------------
+	y = y - 8
 	y = MakeHeader(content, "Priority weights", y)
 
 	local weightNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -578,7 +717,7 @@ function Config:Register()
 	local panel = self:Build()
 
 	if Settings and Settings.RegisterCanvasLayoutCategory then
-		local category = Settings.RegisterCanvasLayoutCategory(panel, "ZoneComplete")
+		local category = Settings.RegisterCanvasLayoutCategory(panel, "Sloot Tracker")
 		Settings.RegisterAddOnCategory(category)
 		self.category = category
 		self.categoryID = category:GetID()

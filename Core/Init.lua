@@ -1,11 +1,11 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Core/Init.lua
+	SlootTracker - Core/Init.lua
 
 	Namespace, saved variables, event bus, chunked task runner, slash commands.
 ----------------------------------------------------------------------------]]
 
 local ADDON, ns = ...
-_G.ZoneComplete = ns
+_G.SlootTracker = ns
 
 ns.ADDON = ADDON
 ns.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or "1.0.0"
@@ -126,6 +126,20 @@ ns.defaults = {
 		autoPoint = false,   -- auto-set a waypoint on the top route stop
 	},
 
+	-- Nearby guild member detection.
+	guildRadar = {
+		enabled     = false,
+		mode        = "both",   -- "zone" | "close" | "both"
+		-- Default output stays inside your own client. Broadcasting to a real
+		-- chat channel is opt-in on purpose: automated messages to GUILD/SAY
+		-- are how people get muted.
+		output      = "self",
+		template    = "%name% is %how% - %count% things to do in %zone%",
+		cooldown    = 600,      -- per player, seconds
+		minInterval = 20,       -- global floor between any two announcements
+		sound       = false,
+	},
+
 	maxRows     = 300,
 	autoRescan  = true,      -- rescan when the player changes zone
 	debug       = false,
@@ -153,12 +167,12 @@ end
 ns.CopyDefaults = CopyDefaults
 
 function ns:Print(...)
-	print("|cff5bc0f5ZoneComplete|r:", ...)
+	print("|cff5bc0f5Sloot Tracker|r:", ...)
 end
 
 function ns:Debug(...)
 	if self.db and self.db.debug then
-		print("|cff888888ZC|r:", ...)
+		print("|cff888888ST|r:", ...)
 	end
 end
 
@@ -167,7 +181,7 @@ end
 -- including embedded nils, so the results are tail-forwarded, not packed.
 local function TryResult(ok, ...)
 	if not ok then
-		if ns.db and ns.db.debug then print("|cffff5555ZC error|r:", (...)) end
+		if ns.db and ns.db.debug then print("|cffff5555ST error|r:", (...)) end
 		return nil
 	end
 	return ...
@@ -299,7 +313,7 @@ end
 -- Event bus
 --------------------------------------------------------------------------
 
-local frame = CreateFrame("Frame", "ZoneCompleteEventFrame")
+local frame = CreateFrame("Frame", "SlootTrackerEventFrame")
 local handlers = {}
 
 frame:SetScript("OnEvent", function(_, event, ...)
@@ -431,11 +445,11 @@ end
 --------------------------------------------------------------------------
 
 local function InitDB()
-	_G.ZoneCompleteDB  = CopyDefaults(ns.defaults, _G.ZoneCompleteDB or {})
-	_G.ZoneCompleteCharDB = _G.ZoneCompleteCharDB or {}
+	_G.SlootTrackerDB  = CopyDefaults(ns.defaults, _G.SlootTrackerDB or {})
+	_G.SlootTrackerCharDB = _G.SlootTrackerCharDB or {}
 
-	ns.db     = _G.ZoneCompleteDB
-	ns.chardb = _G.ZoneCompleteCharDB
+	ns.db     = _G.SlootTrackerDB
+	ns.chardb = _G.SlootTrackerCharDB
 
 	ns.db.cache = ns.db.cache or {}
 	ns.db.roster = ns.db.roster or {}
@@ -489,8 +503,9 @@ end)
 -- Slash commands
 --------------------------------------------------------------------------
 
-SLASH_ZONECOMPLETE1 = "/zc"
-SLASH_ZONECOMPLETE2 = "/zonecomplete"
+SLASH_SLOOTTRACKER1 = "/sloot"
+SLASH_SLOOTTRACKER2 = "/slt"
+SLASH_SLOOTTRACKER3 = "/zc"
 
 local function Usage()
 	ns:Print("commands:")
@@ -498,7 +513,9 @@ local function Usage()
 	print("  |cffffd100/zc scan|r - force a rescan")
 	print("  |cffffd100/zc auto|r - scope per category (default)")
 	print("  |cffffd100/zc char|r / |cffffd100/zc account|r - force one scope everywhere")
-	print("  |cffffd100/zc alert off|all|high|r - quest alerts (all quests, or level-appropriate only)")
+	print("  |cffffd100/sloot alert off|all|high|r - quest alerts (all quests, or level-appropriate only)")
+	print("  |cffffd100/sloot guild on|off|test|r - nearby guild member detection")
+	print("  |cffffd100/sloot guild out self|guild|say|yell|party|emote|r - where it announces")
 	print("  |cffffd100/zc config|r - open settings")
 	print("  |cffffd100/zc reach zone|continent|world|r - how far to look")
 	print("  |cffffd100/zc route|r - print the planned route for this zone")
@@ -506,7 +523,7 @@ local function Usage()
 	print("  |cffffd100/zc debug|r - toggle debug output")
 end
 
-SlashCmdList.ZONECOMPLETE = function(msg)
+SlashCmdList.SLOOTTRACKER = function(msg)
 	msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
 	local cmd, rest = msg:match("^(%S*)%s*(.*)$")
 
@@ -557,6 +574,51 @@ SlashCmdList.ZONECOMPLETE = function(msg)
 			ns:Fire("REQUEST_SCAN", true)
 		else
 			ns:Print("reach is |cffffd100" .. ns.db.reach .. "|r (zone / continent / world)")
+		end
+	elseif cmd == "guild" then
+		local sub, arg = rest:match("^(%S*)%s*(.*)$")
+		if sub == "on" then
+			ns.db.guildRadar.enabled = true
+			ns:Print(("guild radar |cff40ff40on|r - announcing to |cffffd100%s|r"):format(
+				ns.GuildRadar:OutputLabel(ns.db.guildRadar.output)))
+		elseif sub == "off" then
+			ns.db.guildRadar.enabled = false
+			ns:Print("guild radar |cffff5555off|r")
+		elseif sub == "test" then
+			ns:Fire("GUILD_RADAR_CHECK", true)
+		elseif sub == "reset" then
+			ns:Fire("GUILD_RADAR_RESET")
+			ns:Print("guild radar cooldowns cleared.")
+		elseif sub == "out" or sub == "output" then
+			local map = {
+				self = "self", guild = "GUILD", say = "SAY",
+				yell = "YELL", party = "PARTY", emote = "EMOTE",
+			}
+			local target = map[arg]
+			if target then
+				ns.db.guildRadar.output = target
+				ns:Print(("guild radar announces to |cffffd100%s|r"):format(
+					ns.GuildRadar:OutputLabel(target)))
+				if target ~= "self" then
+					ns:Print("|cffff8040heads up:|r this sends real chat messages. "
+						.. "Keep it slow or people will notice.")
+				end
+			else
+				ns:Print("use: self / guild / say / yell / party / emote")
+			end
+		elseif sub == "mode" then
+			if arg == "zone" or arg == "close" or arg == "both" then
+				ns.db.guildRadar.mode = arg
+				ns:Print(("guild radar mode |cffffd100%s|r"):format(arg))
+			else
+				ns:Print("use: zone (same zone) / close (nameplate range) / both")
+			end
+		else
+			ns:Print(("guild radar is %s, mode |cffffd100%s|r, announcing to |cffffd100%s|r."):format(
+				ns.db.guildRadar.enabled and "|cff40ff40on|r" or "|cffff5555off|r",
+				ns.db.guildRadar.mode,
+				ns.GuildRadar:OutputLabel(ns.db.guildRadar.output)))
+			print("  on / off / test / reset / mode <zone|close|both> / out <self|guild|say|yell|party|emote>")
 		end
 	elseif cmd == "config" or cmd == "options" then
 		ns:Fire("OPEN_CONFIG")

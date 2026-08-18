@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - UI/Main.lua
+	SlootTracker - UI/Main.lua
 
 	The window: scope + reach selectors, category filters, the planned route
 	strip, and the ranked list.
@@ -498,7 +498,7 @@ end
 function UI:Build()
 	if frame then return frame end
 
-	frame = CreateFrame("Frame", "ZoneCompleteFrame", UIParent, "BackdropTemplate")
+	frame = CreateFrame("Frame", "SlootTrackerFrame", UIParent, "BackdropTemplate")
 	frame:SetSize(ns.db.window.width, ns.db.window.height)
 	frame:SetPoint(ns.db.window.point, UIParent, ns.db.window.relPoint, ns.db.window.x, ns.db.window.y)
 	frame:SetMovable(true)
@@ -517,7 +517,7 @@ function UI:Build()
 		})
 	end
 
-	tinsert(UISpecialFrames, "ZoneCompleteFrame")
+	tinsert(UISpecialFrames, "SlootTrackerFrame")
 
 	-- Title bar / dragging
 	local titleBar = CreateFrame("Frame", nil, frame)
@@ -536,7 +536,7 @@ function UI:Build()
 
 	frame.title = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	frame.title:SetPoint("LEFT", 6, 0)
-	frame.title:SetText("|cff5bc0f5ZoneComplete|r")
+	frame.title:SetText("|cff5bc0f5Sloot Tracker|r")
 
 	frame.zoneLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	frame.zoneLabel:SetPoint("LEFT", frame.title, "RIGHT", 10, 0)
@@ -793,7 +793,7 @@ end
 local function CreateMinimapButton()
 	if not Minimap then return end
 
-	local button = CreateFrame("Button", "ZoneCompleteMinimapButton", Minimap)
+	local button = CreateFrame("Button", "SlootTrackerMinimapButton", Minimap)
 	button:SetSize(31, 31)
 	button:SetFrameStrata("MEDIUM")
 	button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -834,7 +834,7 @@ local function CreateMinimapButton()
 
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-		GameTooltip:AddLine("ZoneComplete")
+		GameTooltip:AddLine("Sloot Tracker")
 		GameTooltip:AddLine("Left-click: open the list", 0.8, 0.8, 0.8)
 		GameTooltip:AddLine("Right-click: settings", 0.8, 0.8, 0.8)
 		GameTooltip:AddLine("Drag: move this button", 0.6, 0.6, 0.6)

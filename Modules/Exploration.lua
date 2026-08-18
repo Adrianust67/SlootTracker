@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Modules/Exploration.lua
+	SlootTracker - Modules/Exploration.lua
 
 	Unexplored subzones, pulled from the "Explore <Zone>" achievements, whose
 	criteria are one-per-subzone (criteria type 43, asset = areaID).
@@ -33,7 +33,7 @@ local prepareAttempts = 0
 function Exploration:Prepare()
 	local cache = CacheRoot()
 	if cache.byMap then return end
-	if ns:IsTaskRunning("ZC:ExploreIndex") then return end
+	if ns:IsTaskRunning("ST:ExploreIndex") then return end
 
 	local achCache = ns.db.cache.ach
 	if not (achCache and achCache.zoneOf) then
@@ -56,7 +56,7 @@ function Exploration:Prepare()
 
 	local byMap = {}
 	local i = 0
-	ns:RunTask("ZC:ExploreIndex", function()
+	ns:RunTask("ST:ExploreIndex", function()
 		i = i + 1
 		local c = candidates[i]
 		if not c then return false end

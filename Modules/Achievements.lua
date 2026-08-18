@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Modules/Achievements.lua
+	SlootTracker - Modules/Achievements.lua
 
 	There is no API that says "which achievements belong to this zone", so we
 	build that index ourselves, once per client build, and cache it:
@@ -52,7 +52,7 @@ function Achievements:BuildIndex(onDone)
 		if onDone then onDone() end
 		return
 	end
-	if ns:IsTaskRunning("ZC:AchIndex") then return end
+	if ns:IsTaskRunning("ST:AchIndex") then return end
 
 	local categories = ns.Try(GetCategoryList)
 	if not categories then
@@ -84,7 +84,7 @@ function Achievements:BuildIndex(onDone)
 	local zoneOf, special, unzonedList = {}, {}, {}
 	local ci = 0
 
-	ns:RunTask("ZC:AchIndex", function()
+	ns:RunTask("ST:AchIndex", function()
 		ci = ci + 1
 		local catID = categories[ci]
 		if not catID then return false end

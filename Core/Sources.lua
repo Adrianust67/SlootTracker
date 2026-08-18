@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Core/Sources.lua
+	SlootTracker - Core/Sources.lua
 
 	"Where do I get this?" for collectibles.
 
@@ -116,7 +116,7 @@ end
 local scanner
 local function LegacyItemTooltipText(itemID)
 	if not scanner then
-		scanner = CreateFrame("GameTooltip", "ZoneCompleteScanTooltip", nil, "GameTooltipTemplate")
+		scanner = CreateFrame("GameTooltip", "SlootTrackerScanTooltip", nil, "GameTooltipTemplate")
 		scanner:SetOwner(UIParent, "ANCHOR_NONE")
 	end
 	scanner:ClearLines()
@@ -125,7 +125,7 @@ local function LegacyItemTooltipText(itemID)
 
 	local parts = {}
 	for i = 1, scanner:NumLines() do
-		local left = _G["ZoneCompleteScanTooltipTextLeft" .. i]
+		local left = _G["SlootTrackerScanTooltipTextLeft" .. i]
 		if left then
 			local text = left:GetText()
 			if text and text ~= "" then table.insert(parts, text) end

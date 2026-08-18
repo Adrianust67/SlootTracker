@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Core/Priority.lua
+	SlootTracker - Core/Priority.lua
 
 	Orchestrates the scan, scores every entry, and plans a route.
 

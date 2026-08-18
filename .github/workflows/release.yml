@@ -1,0 +1,30 @@
+name: Package and release
+
+# Fires when you push a version tag, e.g. `git tag v1.0.1 && git push --tags`.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the GitHub release
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # The packager reads tags and commit history to build the changelog.
+          fetch-depth: 0
+
+      # BigWigsMods/packager is the standard World of Warcraft addon packager.
+      # With no .pkgmeta it zips the repo root into a folder named after the
+      # repository - so the repo MUST be named SlootTracker for the zip to
+      # extract as Interface/AddOns/SlootTracker.
+      - name: Package and upload to GitHub Releases
+        uses: BigWigsMods/packager@v2
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

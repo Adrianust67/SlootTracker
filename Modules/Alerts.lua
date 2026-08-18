@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Modules/Alerts.lua
+	SlootTracker - Modules/Alerts.lua
 
 	Tells you when the zone you just walked into still has quests in it.
 
@@ -91,7 +91,7 @@ end
 local function BuildBanner()
 	if banner then return banner end
 
-	banner = CreateFrame("Button", "ZoneCompleteAlertBanner", UIParent, "BackdropTemplate")
+	banner = CreateFrame("Button", "SlootTrackerAlertBanner", UIParent, "BackdropTemplate")
 	banner:SetSize(420, 54)
 	banner:SetPoint("TOP", UIParent, "TOP", 0, -180)
 	banner:SetFrameStrata("HIGH")
@@ -143,7 +143,7 @@ local function BuildBanner()
 
 	banner:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-		GameTooltip:AddLine("ZoneComplete quest alert")
+		GameTooltip:AddLine("Sloot Tracker quest alert")
 		if self.sample then
 			for _, name in ipairs(self.sample) do
 				GameTooltip:AddLine("- " .. name, 0.85, 0.85, 0.85)

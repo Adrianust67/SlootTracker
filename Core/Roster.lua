@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Core/Roster.lua
+	SlootTracker - Core/Roster.lua
 
 	The scope selector needs data the game will not give us.
 

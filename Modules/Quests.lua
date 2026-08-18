@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Modules/Quests.lua
+	SlootTracker - Modules/Quests.lua
 
 	Four sources, in descending order of usefulness:
 

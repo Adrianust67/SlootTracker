@@ -1,5 +1,5 @@
 --[[--------------------------------------------------------------------------
-	ZoneComplete - Core/Location.lua
+	SlootTracker - Core/Location.lua
 
 	Where the player is, what maps exist, and how far apart two things are.
 
@@ -323,7 +323,7 @@ function Location:SetWaypoint(mapID, x, y, title)
 
 	if _G.TomTom and _G.TomTom.AddWaypoint then
 		ns.Try(_G.TomTom.AddWaypoint, _G.TomTom, mapID, x, y, {
-			title = title or "ZoneComplete",
+			title = title or "Sloot Tracker",
 			persistent = false,
 			minimap = true,
 			world = true,
