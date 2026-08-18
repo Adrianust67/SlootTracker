@@ -60,7 +60,7 @@ local function ScanMounts(out, ctx)
 		local name, spellID, icon, _, _, sourceType, _, isFactionSpecific, faction,
 		      shouldHideOnChar, isCollected = ns.Try(C_MountJournal.GetMountInfoByID, mountID)
 
-		if name and (not isCollected or ns.db.showCompleted) then
+		if name and not isCollected then
 			local usable = true
 			if hideUnusable then
 				if shouldHideOnChar then usable = false end
@@ -88,7 +88,6 @@ local function ScanMounts(out, ctx)
 						name      = name,
 						icon      = icon,
 						typeLabel = "Mount",
-						done      = isCollected or nil,
 						link      = spellID and ("|cff71d5ff|Hspell:%d|h[%s]|h|r"):format(spellID, name) or nil,
 					}
 					ApplyParsed(entry, parsed)
@@ -173,8 +172,7 @@ local function ScanToys(out, ctx)
 	if not ids then return end
 
 	for _, itemID in ipairs(ids) do
-		local owned = ns.Try(PlayerHasToy, itemID) and true or false
-		if not owned or ns.db.showCompleted then
+		if not ns.Try(PlayerHasToy, itemID) then
 			local _, toyName, icon = ns.Try(C_ToyBox.GetToyInfo, itemID)
 			if toyName then
 				local parsed = ns.Sources:Resolve("toy", itemID, function()
@@ -191,7 +189,6 @@ local function ScanToys(out, ctx)
 						icon      = icon,
 						typeLabel = "Toy",
 						itemID    = itemID,
-						done      = owned or nil,
 					}
 					ApplyParsed(entry, parsed)
 					if ZoneGate(entry, parsed) then table.insert(out, entry) end
@@ -244,7 +241,7 @@ local function ScanPets(out, ctx)
 
 	for _, speciesID in ipairs(species) do
 		local numCollected = ns.Try(C_PetJournal.GetNumCollectedInfo, speciesID)
-		if numCollected == 0 or (ns.db.showCompleted and numCollected ~= nil) then
+		if numCollected == 0 then
 			local name, icon, petType, _, tooltipSource, _, isWild, canBattle,
 			      _, _, obtainable = ns.Try(C_PetJournal.GetPetInfoBySpeciesID, speciesID)
 
@@ -261,7 +258,6 @@ local function ScanPets(out, ctx)
 						icon      = icon,
 						typeLabel = isWild and "Wild Pet" or "Pet",
 						isWild    = isWild,
-						done      = (numCollected or 0) > 0 or nil,
 					}
 					ApplyParsed(entry, parsed)
 					if ZoneGate(entry, parsed) then table.insert(out, entry) end
@@ -280,7 +276,7 @@ local function ScanTransmogSets(out, ctx)
 	if type(sets) ~= "table" then return end
 
 	for _, set in ipairs(sets) do
-		if set and set.name and (not set.collected or ns.db.showCompleted) then
+		if set and not set.collected and set.name then
 			local blob = table.concat({ set.name, set.description or "", set.label or "" }, "\n")
 			local parsed = ns.Sources:Resolve("tmogset", set.setID, function() return blob end)
 
@@ -292,7 +288,6 @@ local function ScanTransmogSets(out, ctx)
 				name      = set.name,
 				icon      = 134400, -- Interface\Icons\INV_Misc_QuestionMark
 				typeLabel = "Transmog Set",
-				done      = set.collected or nil,
 				detail    = set.description or set.label,
 			}
 			entry.mapID    = parsed.mapID
@@ -311,8 +306,7 @@ local function ScanHeirlooms(out, ctx)
 	if type(ids) ~= "table" then return end
 
 	for _, itemID in ipairs(ids) do
-		local ownedHl = ns.Try(C_Heirloom.PlayerHasHeirloom, itemID) and true or false
-		if not ownedHl or ns.db.showCompleted then
+		if not ns.Try(C_Heirloom.PlayerHasHeirloom, itemID) then
 			local name, _, _, icon = ns.Try(C_Heirloom.GetHeirloomInfo, itemID)
 			if name then
 				local parsed = ns.Sources:Resolve("heirloom", itemID, function()
@@ -328,7 +322,6 @@ local function ScanHeirlooms(out, ctx)
 					name      = name,
 					icon      = icon,
 					typeLabel = "Heirloom",
-					done      = ownedHl or nil,
 				}
 				ApplyParsed(entry, parsed)
 				if ZoneGate(entry, parsed) then table.insert(out, entry) end
@@ -350,8 +343,7 @@ local function ScanTitles(out, ctx)
 
 	local num = ns.Try(GetNumTitles) or 0
 	for i = 1, num do
-		local knownTitle = ns.Try(IsTitleKnown, i)
-		if knownTitle == false or (knownTitle ~= nil and ns.db.showCompleted) then
+		if ns.Try(IsTitleKnown, i) == false then
 			local name = ns.Try(GetTitleName, i)
 			if name and name:gsub("%s", "") ~= "" then
 				table.insert(out, {
@@ -362,7 +354,6 @@ local function ScanTitles(out, ctx)
 					name      = (name:gsub("^%s+", ""):gsub("%s+$", "")),
 					icon      = "Interface\\Icons\\Achievement_PVP_A_A",
 					typeLabel = "Title",
-					done      = (knownTitle == true) or nil,
 					detail    = "Unearned title",
 				})
 			end

@@ -42,8 +42,11 @@ local CATEGORY_COLORS = {
 	titles       = { 0.80, 0.80, 0.80 },
 }
 
+-- Quests are deliberately absent: the game only ever exposes the quests it is
+-- currently offering you, never the full set for a zone, so a "Quests" column
+-- in a completion tracker promised more than it could deliver. Quest coverage
+-- lives in the alert system instead, which only claims what it can see.
 local FILTER_ORDER = {
-	{ key = "quests",       label = "Quests" },
 	{ key = "achievements", label = "Achievements" },
 	{ key = "exploration",  label = "Exploration" },
 	{ key = "treasures",    label = "Treasures" },
@@ -54,8 +57,6 @@ local FILTER_ORDER = {
 	{ key = "heirlooms",    label = "Heirlooms" },
 	{ key = "titles",       label = "Titles" },
 }
-
-local CHECK_MARK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t"
 
 local frame, rows, slider, scrollOffset = nil, {}, nil, 0
 local visibleRows = 12
@@ -379,20 +380,8 @@ local function UpdateRow(row, entry, rank)
 
 	row.rank:SetText(entry.routeStep and ("|cff40ff40#%d|r"):format(entry.routeStep) or tostring(rank))
 
-	if entry.done then
-		-- Reference rows: greyed and ticked so they read as "already have this"
-		-- at a glance rather than competing with the outstanding work.
-		row.name:SetText("|cff40ff40" .. CHECK_MARK .. "|r " .. (entry.name or "?"))
-		row.name:SetTextColor(0.55, 0.55, 0.55)
-		row.icon:SetDesaturated(true)
-		row.icon:SetAlpha(0.5)
-	else
-		row.name:SetText(entry.name or "?")
-		row.name:SetTextColor(r, g, b)
-		row.icon:SetDesaturated(false)
-		row.icon:SetAlpha(1)
-	end
-
+	row.name:SetText(entry.name or "?")
+	row.name:SetTextColor(r, g, b)
 	row.detail:SetText(entry.detail or "")
 
 	row.zone:SetText(entry.zoneName or "")
@@ -777,6 +766,24 @@ function UI:Build()
 	frame.empty:SetTextColor(0.7, 0.7, 0.7)
 	frame.empty:Hide()
 
+	-- One click back to a working state. Hunting through settings to undo your
+	-- own filters is exactly the moment people give up on an addon.
+	frame.emptyFix = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	frame.emptyFix:SetSize(220, 24)
+	frame.emptyFix:SetPoint("TOP", frame.empty, "BOTTOM", 0, -12)
+	frame.emptyFix:SetText("Show me everything nearby")
+	frame.emptyFix:Hide()
+	frame.emptyFix:SetScript("OnClick", function()
+		for _, def in ipairs(FILTER_ORDER) do
+			ns.db.filters[def.key] = true
+		end
+		ns.db.reach = "continent"
+		ns.db.collections.requireZoneMatch = false
+		UI:SyncFilters()
+		ns:Fire("REQUEST_SCAN", true)
+		ns:Print("categories enabled, reach widened to this continent.")
+	end)
+
 	frame.footer = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	frame.footer:SetPoint("BOTTOMLEFT", 16, 12)
 	frame.footer:SetPoint("BOTTOMRIGHT", frame.warning, "BOTTOMLEFT", -12, 0)
@@ -855,12 +862,14 @@ function UI:UpdateEmptyState()
 
 	if #displayed > 0 then
 		frame.empty:Hide()
+		frame.emptyFix:Hide()
 		return
 	end
 
 	if ns.Priority.scanning then
 		frame.empty:SetText("Scanning...")
 		frame.empty:Show()
+		frame.emptyFix:Hide()
 		return
 	end
 
@@ -895,6 +904,7 @@ function UI:UpdateEmptyState()
 		frame.empty:SetText("Nothing to show here.\n\n" .. table.concat(reasons, "\n"))
 	end
 	frame.empty:Show()
+	frame.emptyFix:Show()
 end
 
 function UI:Refresh()
@@ -941,15 +951,20 @@ function UI:Refresh()
 	end
 end
 
+function UI:Show()
+	self:Build()
+	frame:Show()
+	self:SyncFilters()
+	ns:Fire("REQUEST_SCAN")
+	self:Refresh()
+end
+
 function UI:Toggle()
 	self:Build()
 	if frame:IsShown() then
 		frame:Hide()
 	else
-		frame:Show()
-		self:SyncFilters()
-		ns:Fire("REQUEST_SCAN")
-		self:Refresh()
+		self:Show()
 	end
 end
 
@@ -1031,6 +1046,7 @@ ns:On("PLAYER_READY", function()
 end)
 
 ns:On("TOGGLE_WINDOW", function() UI:Toggle() end)
+ns:On("SHOW_WINDOW", function() UI:Show() end)
 ns:On("SCAN_COMPLETE", function() UI:Refresh() end)
 ns:On("ENTRIES_REFRESHED", function() UI:Refresh() end)
 ns:On("ZONE_CHANGED", function() UI:Refresh() end)

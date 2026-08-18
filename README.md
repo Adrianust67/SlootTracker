@@ -26,10 +26,7 @@ so it matches the `.toc`.
 
 | Category | Source | Location accuracy |
 |---|---|---|
-| Quests in your log | quest log API | exact pin |
-| Quests offered but not accepted | map quest pins | exact pin |
-| World quests / bonus objectives | task quest API | exact pin |
-| Zone story progress | zone story achievement | zone |
+| Quests | not listed - see Quest alerts below | - |
 | Achievements | built zone index (see below) | zone |
 | Unexplored subzones | "Explore *Zone*" achievement criteria | zone |
 | Treasures, rares, points of interest | area POIs + live vignettes | exact pin |
@@ -40,7 +37,7 @@ so it matches the `.toc`.
 
 ## Using it
 
-- `/zc` — open the window (or the minimap button)
+- `/sloot` — open the window (or the minimap button); `/slt` and `/zc` also work
 - `/sloot scan` — force a rescan
 - `/sloot auto` — scope per category (the default)
 - `/sloot char` / `/sloot account` — force one scope everywhere
@@ -153,8 +150,8 @@ section:
   The alert calls out how many of the total are low-level.
 - **Include low-level quests: off** — only level-appropriate quests.
 
-Both use the same low-level threshold slider as the main quest filter (default:
-more than 10 levels below you).
+Both use the low-level threshold slider in settings (default: more than 10
+levels below you).
 
 You can independently include quests you haven't picked up yet, quests already
 in your log, or both. Output is any combination of an on-screen banner

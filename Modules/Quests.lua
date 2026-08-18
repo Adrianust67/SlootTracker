@@ -22,8 +22,14 @@
 local ADDON, ns = ...
 
 local Quests = { key = "quests", label = "Quests", filters = { "quests" } }
-ns:RegisterProvider(Quests)
 ns.Quests = Quests
+
+-- Not registered as a list provider. The client only ever exposes quests it is
+-- currently offering, so a quest column could never answer "what is left in
+-- this zone" honestly. The module stays loaded because SurveyZone below powers
+-- the quest alerts, which only claim what the API can actually see.
+-- To put quests back in the list, uncomment the next line.
+-- ns:RegisterProvider(Quests)
 
 --------------------------------------------------------------------------
 -- Helpers

@@ -223,20 +223,14 @@ function Config:Build()
 	y = y - 8
 	y = MakeHeader(content, "What to track", y)
 
-	y = MakeCheck(content, "Show everything, including what you already have",
-		"Off (default): only what you have not done yet - unfinished achievements, "
-		.. "unexplored areas, uncollected mounts, toys and pets.\n\n"
-		.. "On: also lists the ones you already own or completed, greyed out with a tick "
-		.. "and ranked below everything outstanding, so you can browse a zone's full "
-		.. "contents rather than only what is left.\n\n"
-		.. "Note: quests are unaffected. The game will not tell an addon which quests "
-		.. "exist in a zone, only which ones it is currently offering you.",
-		y,
-		function() return ns.db.showCompleted end,
-		function(v) ns.db.showCompleted = v end)
+	local trackNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	trackNote:SetPoint("TOPLEFT", 24, y)
+	trackNote:SetWidth(PANEL_WIDTH - 80)
+	trackNote:SetJustifyH("LEFT")
+	trackNote:SetText("Only things you have not done yet are ever listed.")
+	y = y - 22
 
 	local CATS = {
-		{ "quests",       "Quests" },
 		{ "achievements", "Achievements" },
 		{ "exploration",  "Unexplored areas" },
 		{ "treasures",    "Treasures, rares and points of interest" },
@@ -256,14 +250,16 @@ function Config:Build()
 
 	----------------------------------------------------------------
 	y = y - 8
-	y = MakeHeader(content, "Quests", y)
+	y = MakeHeader(content, "Quest alerts", y)
 
-	y = MakeCheck(content, "Include low-level quests",
-		"Off: only quests within " .. tostring(ns.db.quests.trivialLevelGap) .. " levels of you.\n"
-		.. "On: every unfinished quest the game will offer you, including trivial ones you outlevelled.",
-		y,
-		function() return ns.db.quests.includeTrivial end,
-		function(v) ns.db.quests.includeTrivial = v end)
+	local questNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	questNote:SetPoint("TOPLEFT", 24, y)
+	questNote:SetWidth(PANEL_WIDTH - 80)
+	questNote:SetJustifyH("LEFT")
+	questNote:SetText("Quests are not listed in the tracker: the game only ever exposes the quests "
+		.. "it is currently offering you, never the full set for a zone, so a quest column could "
+		.. "not answer \"what is left here\" honestly. Alerts only claim what the game can see.")
+	y = y - 46
 
 	y = MakeSlider(content, "Low-level threshold",
 		"A quest counts as low-level when its level is at least this far below yours.",
@@ -271,26 +267,6 @@ function Config:Build()
 		function() return ns.db.quests.trivialLevelGap end,
 		function(v) ns.db.quests.trivialLevelGap = v end,
 		"%s: %s levels below you")
-
-	y = MakeCheck(content, "Include quests already in your log", nil, y,
-		function() return ns.db.quests.includeInLog end,
-		function(v) ns.db.quests.includeInLog = v end)
-
-	y = MakeCheck(content, "Include world quests and bonus objectives", nil, y,
-		function() return ns.db.quests.includeWorldQuests end,
-		function(v) ns.db.quests.includeWorldQuests = v end)
-
-	----------------------------------------------------------------
-	y = y - 8
-	y = MakeHeader(content, "Quest alerts", y)
-
-	local alertNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	alertNote:SetPoint("TOPLEFT", 24, y)
-	alertNote:SetWidth(PANEL_WIDTH - 80)
-	alertNote:SetJustifyH("LEFT")
-	alertNote:SetText("Announces quests left behind in a zone as you enter it. Throttled per zone, "
-		.. "and never fires in combat.")
-	y = y - 30
 
 	y = MakeCheck(content, "Enable quest alerts", nil, y,
 		function() return ns.db.alerts.enabled end,

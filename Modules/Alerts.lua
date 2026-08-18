@@ -138,7 +138,9 @@ local function BuildBanner()
 
 	banner:SetScript("OnClick", function()
 		banner:Hide()
-		ns:Fire("TOGGLE_WINDOW")
+		-- Show, never toggle: the banner says "open the list", so clicking it
+		-- while the list is already open must not close it.
+		ns:Fire("SHOW_WINDOW")
 	end)
 
 	banner:SetScript("OnEnter", function(self)

@@ -174,10 +174,6 @@ local function ShouldSkip(achID, completed, wasEarnedByMe)
 	if cfg.hideFeatsOfStrength and special == "fos" then return true end
 	if cfg.hideLegacy and special == "legacy" then return true end
 
-	-- "Show everything" mode keeps completed achievements in the list; they
-	-- are pushed to the bottom by the scorer rather than filtered out.
-	if ns.db.showCompleted then return false end
-
 	if ns:IsAccountScope("achievements") then
 		-- Achievement credit is account-wide; if the account has it, it is done.
 		return completed
@@ -233,7 +229,6 @@ local function BuildEntry(achID)
 		progress  = progress,
 		detail    = detail,
 		missing   = missing,
-		done      = completed or nil,
 		earnedByAlt = completed and not wasEarnedByMe or nil,
 		link      = ns.Try(GetAchievementLink, achID),
 		trackType = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement or nil,
