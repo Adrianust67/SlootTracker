@@ -183,6 +183,17 @@ function Config:Build()
 		function(v) ns.db.achievements.pointsWeight = v end,
 		"%s: %s")
 
+	y = MakeSlider(content, "Ignore achievements more than N steps away",
+		"0 shows everything.\n\n"
+		.. "A step is one thing still between you and the achievement. For a meta - "
+		.. "an achievement earned by completing other achievements - each unfinished "
+		.. "prerequisite counts as a step, including ones buried deeper. Set this to "
+		.. "3 or so to drop the ones you cannot realistically act on today.",
+		y, 0, 20, 1,
+		function() return ns.db.achievements.maxSteps end,
+		function(v) ns.db.achievements.maxSteps = v end,
+		"%s: %s")
+
 	y = MakeCheck(content, "Hide Feats of Strength", nil, y,
 		function() return ns.db.achievements.hideFeatsOfStrength end,
 		function(v) ns.db.achievements.hideFeatsOfStrength = v end)

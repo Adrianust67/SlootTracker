@@ -140,6 +140,64 @@ end
 -- Criteria
 --------------------------------------------------------------------------
 
+--------------------------------------------------------------------------
+-- Meta-achievements
+--
+-- Some achievements are satisfied by other achievements (criteria type 8,
+-- asset = the required achievement id). A meta sitting behind five unfinished
+-- sub-achievements is not something you can act on from where you stand, so
+-- it needs to say how far away it is and rank accordingly.
+--
+-- Prerequisites that are themselves metas contribute their own depth, so the
+-- number reported is the real count of achievements still in the way, not
+-- just the direct ones. Depth is capped rather than cycle-checked; the tree is
+-- shallow in practice and the cap makes runaway recursion impossible.
+--------------------------------------------------------------------------
+
+local CRITERIA_TYPE_ACHIEVEMENT = 8
+local META_MAX_DEPTH = 4
+
+local metaCache = {}
+
+-- Returns isMeta, stepsAway, { names of the first few missing prerequisites }
+local function MetaInfo(achID, depth)
+	local cached = metaCache[achID]
+	if cached then return cached.isMeta, cached.steps, cached.names end
+
+	depth = depth or 0
+	if depth > META_MAX_DEPTH then return false, 0, nil end
+
+	local num = ns.Try(GetAchievementNumCriteria, achID) or 0
+	local isMeta, steps, names = false, 0, {}
+
+	for i = 1, num do
+		local criteriaString, criteriaType, completed, _, _, _, _, assetID =
+			ns.Try(GetAchievementCriteriaInfo, achID, i)
+
+		if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID and assetID > 0 then
+			isMeta = true
+			if not completed then
+				steps = steps + 1
+				if #names < 3 then
+					local subName = select(2, ns.Try(GetAchievementInfo, assetID))
+					table.insert(names, subName or criteriaString or ("#" .. assetID))
+				end
+				local subIsMeta, subSteps = MetaInfo(assetID, depth + 1)
+				if subIsMeta then steps = steps + subSteps end
+			end
+		end
+	end
+
+	if depth == 0 then
+		metaCache[achID] = { isMeta = isMeta, steps = steps, names = names }
+	end
+	return isMeta, steps, names
+end
+
+function Achievements:ClearMetaCache()
+	wipe(metaCache)
+end
+
 -- Returns have, need, { missing criteria strings }
 local function CriteriaProgress(achID, wantStrings)
 	local num = ns.Try(GetAchievementNumCriteria, achID) or 0
@@ -203,8 +261,24 @@ local function BuildEntry(achID)
 		return nil
 	end
 
+	-- How far away is this, really?
+	local isMeta, steps, blockers = MetaInfo(achID)
+	local stepsAway = isMeta and steps
+		or (have and need and (need - have)) or nil
+
+	local maxSteps = cfg.maxSteps or 0
+	if maxSteps > 0 and stepsAway and stepsAway > maxSteps then
+		return nil
+	end
+
 	local detail
-	if missing and #missing > 0 then
+	if isMeta and steps > 0 then
+		-- A meta behind other achievements is the case where "Missing: ..."
+		-- criteria text is useless; what matters is how many are in the way.
+		detail = ("|cffff8040%d achievement%s away|r - %s"):format(
+			steps, steps == 1 and "" or "s",
+			blockers and #blockers > 0 and table.concat(blockers, ", ") or "prerequisites unfinished")
+	elseif missing and #missing > 0 then
 		detail = "Missing: " .. table.concat(missing, ", ")
 	elseif description and description ~= "" then
 		detail = description
@@ -229,6 +303,9 @@ local function BuildEntry(achID)
 		progress  = progress,
 		detail    = detail,
 		missing   = missing,
+		isMeta        = isMeta or nil,
+		metaRemaining = (isMeta and steps > 0) and steps or nil,
+		stepsAway     = stepsAway,
 		earnedByAlt = completed and not wasEarnedByMe or nil,
 		link      = ns.Try(GetAchievementLink, achID),
 		trackType = Enum and Enum.ContentTrackingType and Enum.ContentTrackingType.Achievement or nil,
@@ -277,10 +354,12 @@ end
 --------------------------------------------------------------------------
 
 ns:RegisterEvent("ACHIEVEMENT_EARNED", function()
+	Achievements:ClearMetaCache()
 	C_Timer.After(2, function() ns:Fire("REQUEST_SCAN", true) end)
 end)
 
 ns:RegisterEvent("CRITERIA_UPDATE", function()
+	Achievements:ClearMetaCache()
 	if ns.db and ns.db.autoRescan then
 		C_Timer.After(5, function() ns:Fire("REQUEST_SCAN") end)
 	end

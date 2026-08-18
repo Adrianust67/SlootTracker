@@ -87,19 +87,29 @@ local function PointsFactor(entry)
 end
 
 local function UrgencyFactor(entry)
+	-- Bonuses first, then gates. Applying a penalty before the additive terms
+	-- let a bonus quietly undo it, which defeated the point of the penalty.
 	local f = 1.0
-	-- Behind a key, lockbox or attunement: still worth listing, but it should
-	-- not outrank something you can simply walk over to. If we could confirm
-	-- the key is in your bags, the penalty is much lighter.
+	if entry.isRare then f = f + 0.5 end   -- up right now
+	if entry.timeLeft and entry.timeLeft > 0 and entry.timeLeft < 3600 then
+		f = f + 0.6                        -- about to despawn
+	end
+
+	-- Behind a key, lockbox or attunement: still worth listing, but it must not
+	-- outrank something you can simply walk over to. Much lighter when we could
+	-- confirm the key is actually in your bags.
 	if entry.locked then
 		f = f * (entry.haveKey and 0.75 or 0.3)
 	end
-	if entry.readyForTurnIn then f = f + 1.5 end   -- finish it, it is free points
-	if entry.isWorldQuest    then f = f + 0.4 end   -- expires
-	if entry.isRare          then f = f + 0.5 end   -- up right now
-	if entry.timeLeft and entry.timeLeft > 0 and entry.timeLeft < 3600 then
-		f = f + 0.6
+
+	-- A meta-achievement gated behind other unfinished achievements cannot be
+	-- acted on from here at all, however near it nominally is. The penalty
+	-- scales with how many stand in the way, so a meta one achievement short
+	-- stays visible while one that is five deep sinks out of sight.
+	if entry.metaRemaining and entry.metaRemaining > 0 then
+		f = f / (1 + entry.metaRemaining * 0.9)
 	end
+
 	return f
 end
 

@@ -179,6 +179,14 @@ local function ShowRowTooltip(row)
 		GameTooltip:AddLine(entry.lockNote or "Locked behind a key or attunement.", 1, 0.5, 0.25, true)
 		GameTooltip:AddLine("Ranked lower because you cannot just walk up to it.", 0.6, 0.6, 0.6)
 	end
+	if entry.stepsAway and entry.stepsAway > 0 then
+		local label = entry.isMeta and "Achievements in the way" or "Steps remaining"
+		GameTooltip:AddDoubleLine(label, tostring(entry.stepsAway), 0.6, 0.6, 0.6, 1, 1, 1)
+	end
+	if entry.metaRemaining and entry.metaRemaining > 0 then
+		GameTooltip:AddLine("Earned by completing other achievements - ranked lower until "
+			.. "those are done.", 1, 0.5, 0.25, true)
+	end
 
 	-- Why is this ranked here?
 	local p = entry.scoreParts
@@ -566,9 +574,9 @@ function UI:Build()
 	frame:EnableMouse(true)
 	frame:SetClampedToScreen(true)
 	frame:SetFrameStrata("MEDIUM")
-	-- Low minimums so it can be shrunk down to a small corner panel. The height
-	-- floor allows for the filter grid growing to four rows at minimum width.
-	if frame.SetResizeBounds then frame:SetResizeBounds(420, 320) end
+	-- Floor chosen so the filter grid always has room for at least three
+	-- readable columns. There is no value in letting it shrink past legible.
+	if frame.SetResizeBounds then frame:SetResizeBounds(560, 340) end
 
 	if frame.SetBackdrop then
 		frame:SetBackdrop({

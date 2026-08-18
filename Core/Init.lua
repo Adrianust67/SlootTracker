@@ -78,6 +78,9 @@ ns.defaults = {
 		-- Rank by points earned per remaining step, not just by proximity.
 		prioritiseByPoints  = true,
 		pointsWeight        = 1.0,
+		-- Hide achievements more than N steps from completion (0 = no limit).
+		-- For a meta, a "step" is a whole prerequisite achievement.
+		maxSteps            = 0,
 		onlyNearlyDone      = false,
 		nearlyDoneThreshold = 0.34,   -- when onlyNearlyDone, require >= this progress
 		showCriteria        = true,   -- surface the specific missing criteria
