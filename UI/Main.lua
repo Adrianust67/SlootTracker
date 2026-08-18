@@ -506,7 +506,8 @@ function UI:Build()
 	frame:EnableMouse(true)
 	frame:SetClampedToScreen(true)
 	frame:SetFrameStrata("MEDIUM")
-	if frame.SetResizeBounds then frame:SetResizeBounds(620, 380) end
+	-- Low minimums so it can be shrunk down to a small corner panel.
+	if frame.SetResizeBounds then frame:SetResizeBounds(420, 240) end
 
 	if frame.SetBackdrop then
 		frame:SetBackdrop({
@@ -517,7 +518,11 @@ function UI:Build()
 		})
 	end
 
-	tinsert(UISpecialFrames, "SlootTrackerFrame")
+	-- Deliberately NOT in UISpecialFrames by default. That list is for modal
+	-- panels you dismiss with Escape; a persistent tracker is not one, and in
+	-- a raid you hit Escape constantly. Use the X, or the toggle. Opt in via
+	-- settings if you want the Escape behaviour back.
+	UI:ApplyEscapeClose()
 
 	-- Title bar / dragging
 	local titleBar = CreateFrame("Frame", nil, frame)
@@ -732,8 +737,23 @@ function UI:Build()
 	frame.footer:SetWordWrap(false)
 	frame.footer:SetHeight(14)
 
-	frame:SetScript("OnSizeChanged", function() LayoutRows() end)
+	frame:SetScript("OnSizeChanged", function(self)
+		LayoutRows()
+		-- Persist continuously, not just on grip release, so a size set by any
+		-- means (including an external layout tool) survives a reload.
+		ns.db.window.width, ns.db.window.height = self:GetWidth(), self:GetHeight()
+	end)
+
+	-- Hide first, THEN attach the state trackers: this initial Hide would
+	-- otherwise fire OnHide and clobber the saved value before we restore it.
+	local wasShown = ns.db.window.shown
 	frame:Hide()
+
+	-- Remember open/closed across sessions: closing with the X means it stays
+	-- closed until you reopen it, which is the point of having the button.
+	frame:SetScript("OnShow", function() ns.db.window.shown = true end)
+	frame:SetScript("OnHide", function() ns.db.window.shown = false end)
+	frame.restoreShown = wasShown
 
 	self:SyncFilters()
 	LayoutRows()
@@ -743,6 +763,18 @@ end
 --------------------------------------------------------------------------
 -- Public refresh entry points
 --------------------------------------------------------------------------
+
+-- Escape-to-close is opt-in. UISpecialFrames is a plain global array, so the
+-- entry is added or stripped whenever the setting changes.
+function UI:ApplyEscapeClose()
+	local name = "SlootTrackerFrame"
+	for i = #UISpecialFrames, 1, -1 do
+		if UISpecialFrames[i] == name then table.remove(UISpecialFrames, i) end
+	end
+	if ns.db.window.closeOnEscape then
+		table.insert(UISpecialFrames, name)
+	end
+end
 
 function UI:SyncFilters()
 	if not frame then return end
@@ -876,6 +908,13 @@ end
 ns:On("PLAYER_READY", function()
 	UI:Build()
 	CreateMinimapButton()
+
+	-- Reopen if it was open when you logged out or reloaded.
+	if frame and frame.restoreShown then
+		frame:Show()
+		UI:SyncFilters()
+		ns:Fire("REQUEST_SCAN")
+	end
 end)
 
 ns:On("TOGGLE_WINDOW", function() UI:Toggle() end)

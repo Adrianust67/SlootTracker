@@ -40,7 +40,15 @@ ns.defaults = {
 		quests       = "account",
 	},
 
-	window = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0, width = 820, height = 560 },
+	window = {
+		point = "CENTER", relPoint = "CENTER", x = 0, y = 0,
+		width = 820, height = 560,
+		-- Escape closing the tracker is opt-in: it is a persistent frame, not
+		-- a modal panel, and you press Escape constantly while playing.
+		closeOnEscape = false,
+		-- Remember whether it was open, so it comes back as you left it.
+		shown = false,
+	},
 
 	-- Which content categories feed the list.
 	filters = {

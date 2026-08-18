@@ -588,6 +588,17 @@ function Config:Build()
 		function() return ns.db.autoRescan end,
 		function(v) ns.db.autoRescan = v end)
 
+	y = MakeCheck(content, "Close the tracker window with Escape",
+		"Off (default): Escape leaves the window alone, so it survives everything "
+		.. "Escape does mid-raid. Close it with the X in its corner.\n\n"
+		.. "On: adds it to the game's Escape-dismissable panel list.",
+		y,
+		function() return ns.db.window.closeOnEscape end,
+		function(v)
+			ns.db.window.closeOnEscape = v
+			ns.UI:ApplyEscapeClose()
+		end)
+
 	y = MakeCheck(content, "Hide the minimap button", nil, y,
 		function() return ns.db.hideMinimapButton end,
 		function(v)
