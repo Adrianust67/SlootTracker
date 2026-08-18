@@ -2,7 +2,7 @@
 ## Title: Sloot Tracker
 ## Notes: Location-aware completion tracker. Ranks unfinished achievements, unexplored areas, uncollected mounts/toys/pets and open quests by how close they are to you right now.
 ## Author: BadHeffer
-## Version: 1.1.0
+## Version: 1.2.0
 ## IconTexture: Interface\Icons\INV_Misc_Map02
 ## SavedVariables: SlootTrackerDB
 ## SavedVariablesPerCharacter: SlootTrackerCharDB
