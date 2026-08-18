@@ -157,6 +157,10 @@ ns.defaults = {
 		sound       = false,
 	},
 
+	-- false = only things you have not done yet (the point of the addon)
+	-- true  = everything, with what you already have listed too, ranked last
+	showCompleted = false,
+
 	maxRows     = 300,
 	autoRescan  = true,      -- rescan when the player changes zone
 	debug       = false,

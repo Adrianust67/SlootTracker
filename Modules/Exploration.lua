@@ -242,10 +242,13 @@ function Exploration:Scan(ctx)
 						isTodo = not completedByMe
 					end
 
-					if isTodo and areaName and areaName ~= "" then
+					-- "Show everything" keeps areas you have already found in
+					-- the list, flagged as done and ranked last.
+					if (isTodo or ns.db.showCompleted) and areaName and areaName ~= "" then
 						table.insert(todo, {
 							index = i, name = areaName, areaID = assetID,
 							criteriaID = criteriaID,
+							done = not isTodo or nil,
 							doneByAlt = completed and not completedByMe or false,
 							altName = (completed and not completedByMe) and charName or nil,
 						})
@@ -291,7 +294,8 @@ function Exploration:Scan(ctx)
 						points    = achPoints,
 						detail    = detail,
 						link      = ns.Try(GetAchievementLink, achID),
-						typeLabel = "Unexplored",
+						typeLabel = area.done and "Explored" or "Unexplored",
+						done      = area.done,
 						-- The criterion itself is stored account-wide by the
 						-- game; we are filtering it to this character.
 						sharedCriteria = true,

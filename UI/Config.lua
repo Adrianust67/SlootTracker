@@ -223,6 +223,18 @@ function Config:Build()
 	y = y - 8
 	y = MakeHeader(content, "What to track", y)
 
+	y = MakeCheck(content, "Show everything, including what you already have",
+		"Off (default): only what you have not done yet - unfinished achievements, "
+		.. "unexplored areas, uncollected mounts, toys and pets.\n\n"
+		.. "On: also lists the ones you already own or completed, greyed out with a tick "
+		.. "and ranked below everything outstanding, so you can browse a zone's full "
+		.. "contents rather than only what is left.\n\n"
+		.. "Note: quests are unaffected. The game will not tell an addon which quests "
+		.. "exist in a zone, only which ones it is currently offering you.",
+		y,
+		function() return ns.db.showCompleted end,
+		function(v) ns.db.showCompleted = v end)
+
 	local CATS = {
 		{ "quests",       "Quests" },
 		{ "achievements", "Achievements" },

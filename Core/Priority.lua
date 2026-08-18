@@ -106,6 +106,13 @@ function Priority:Score(entry)
 	local urg    = UrgencyFactor(entry)
 	local points = PointsFactor(entry)
 
+	-- Already-done entries only exist when "show everything" is on. They are
+	-- reference material, not work, so they sink below anything outstanding
+	-- rather than being filtered out.
+	if entry.done then
+		prox = prox * 0.02
+	end
+
 	entry.scoreParts = {
 		weight = weight, proximity = prox, progress = prog,
 		urgency = urg, points = points,

@@ -55,6 +55,8 @@ local FILTER_ORDER = {
 	{ key = "titles",       label = "Titles" },
 }
 
+local CHECK_MARK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t"
+
 local frame, rows, slider, scrollOffset = nil, {}, nil, 0
 local visibleRows = 12
 local displayed = {}   -- filtered view of Priority.entries
@@ -376,8 +378,21 @@ local function UpdateRow(row, entry, rank)
 	end
 
 	row.rank:SetText(entry.routeStep and ("|cff40ff40#%d|r"):format(entry.routeStep) or tostring(rank))
-	row.name:SetText(entry.name or "?")
-	row.name:SetTextColor(r, g, b)
+
+	if entry.done then
+		-- Reference rows: greyed and ticked so they read as "already have this"
+		-- at a glance rather than competing with the outstanding work.
+		row.name:SetText("|cff40ff40" .. CHECK_MARK .. "|r " .. (entry.name or "?"))
+		row.name:SetTextColor(0.55, 0.55, 0.55)
+		row.icon:SetDesaturated(true)
+		row.icon:SetAlpha(0.5)
+	else
+		row.name:SetText(entry.name or "?")
+		row.name:SetTextColor(r, g, b)
+		row.icon:SetDesaturated(false)
+		row.icon:SetAlpha(1)
+	end
+
 	row.detail:SetText(entry.detail or "")
 
 	row.zone:SetText(entry.zoneName or "")
@@ -753,6 +768,15 @@ function UI:Build()
 	frame.warning:SetWordWrap(false)
 	frame.warning:SetHeight(14)
 
+	-- An empty list is nearly always the result of the player's own filters,
+	-- so say which ones rather than showing a blank box.
+	frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	frame.empty:SetPoint("CENTER", frame.list, "CENTER", 0, 0)
+	frame.empty:SetWidth(360)
+	frame.empty:SetJustifyH("CENTER")
+	frame.empty:SetTextColor(0.7, 0.7, 0.7)
+	frame.empty:Hide()
+
 	frame.footer = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	frame.footer:SetPoint("BOTTOMLEFT", 16, 12)
 	frame.footer:SetPoint("BOTTOMRIGHT", frame.warning, "BOTTOMLEFT", -12, 0)
@@ -824,6 +848,55 @@ function UI:SyncFilters()
 	if frame.reach then frame.reach:Sync() end
 end
 
+-- Explain a blank list. Nearly every empty result traces back to a filter the
+-- player set themselves, so name the specific ones rather than showing nothing.
+function UI:UpdateEmptyState()
+	if not frame or not frame.empty then return end
+
+	if #displayed > 0 then
+		frame.empty:Hide()
+		return
+	end
+
+	if ns.Priority.scanning then
+		frame.empty:SetText("Scanning...")
+		frame.empty:Show()
+		return
+	end
+
+	local reasons = {}
+
+	local off = {}
+	for _, def in ipairs(FILTER_ORDER) do
+		if not ns.db.filters[def.key] then table.insert(off, def.label) end
+	end
+	if #off > 0 then
+		table.insert(reasons, "|cffffd100Filtered out:|r " .. table.concat(off, ", "))
+	end
+
+	if ns.db.reach == "zone" then
+		table.insert(reasons, "|cffffd100Reach|r is limited to this zone - try Continent.")
+	end
+
+	if ns.db.collections.requireZoneMatch then
+		local anyCollection = false
+		for _, key in ipairs({ "mounts", "toys", "pets", "transmogsets", "heirlooms" }) do
+			if ns.db.filters[key] then anyCollection = true end
+		end
+		if anyCollection then
+			table.insert(reasons,
+				"Collectibles are hidden unless their source names a zone (Settings > Collections).")
+		end
+	end
+
+	if #reasons == 0 then
+		frame.empty:SetText("Nothing left to do within reach.\n\n|cff888888Widen the reach, or enable more categories.|r")
+	else
+		frame.empty:SetText("Nothing to show here.\n\n" .. table.concat(reasons, "\n"))
+	end
+	frame.empty:Show()
+end
+
 function UI:Refresh()
 	if not frame or not frame:IsShown() then return end
 
@@ -835,6 +908,7 @@ function UI:Refresh()
 	RebuildDisplayed()
 	UpdateScroll()
 	UpdateRoute()
+	UI:UpdateEmptyState()
 
 	-- Footer: per-category counts, highest first.
 	local parts, ordered = {}, {}
