@@ -1,0 +1,8 @@
+# Keep LF in the repo and in the working tree. WoW reads either, but stable
+# line endings stop every checkout on Windows showing the whole addon as
+# modified.
+* text=auto eol=lf
+
+*.lua text eol=lf
+*.toc text eol=lf
+*.md  text eol=lf

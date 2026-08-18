@@ -1,0 +1,27 @@
+## Interface: 120100, 120000, 110207
+## Title: ZoneComplete
+## Notes: Location-aware completion tracker. Ranks unfinished achievements, unexplored areas, uncollected mounts/toys/pets and open quests by how close they are to you right now.
+## Author: Adrianus
+## Version: 1.0.0
+## IconTexture: Interface\Icons\INV_Misc_Map02
+## SavedVariables: ZoneCompleteDB
+## SavedVariablesPerCharacter: ZoneCompleteCharDB
+## OptionalDeps: TomTom
+## Category-enUS: Collections
+## AllowLoadGameType: retail
+
+Core\Init.lua
+Core\Location.lua
+Core\Roster.lua
+Core\Sources.lua
+Core\Priority.lua
+
+Modules\Achievements.lua
+Modules\Exploration.lua
+Modules\Collections.lua
+Modules\Quests.lua
+Modules\Treasures.lua
+Modules\Alerts.lua
+
+UI\Main.lua
+UI\Config.lua

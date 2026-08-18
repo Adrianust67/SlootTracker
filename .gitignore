@@ -1,0 +1,17 @@
+# Packaged releases
+*.zip
+*.tar.gz
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Never commit live game data. SavedVariables live under WTF/ in the WoW
+# install, not here, but keep the guard in case anyone copies one in to debug.
+WTF/
+*.lua.bak
+ZoneCompleteDB.lua
