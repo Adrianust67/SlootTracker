@@ -165,163 +165,6 @@ function Config:Build()
 	local y = -8
 
 	----------------------------------------------------------------
-	y = MakeHeader(content, "Scope", y)
-
-	local scopeNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	scopeNote:SetPoint("TOPLEFT", 24, y)
-	scopeNote:SetWidth(PANEL_WIDTH - 80)
-	scopeNote:SetJustifyH("LEFT")
-	scopeNote:SetText("Mounts, toys, pets, transmog and heirlooms are stored account-wide by the "
-		.. "game and are always tracked that way. The three below are the ones where the choice "
-		.. "is real.")
-	y = y - 34
-
-	y = MakeCheck(content, "Achievements: track per character",
-		"On: what THIS character still has left.\n"
-		.. "Off: what the account still has left.\n\n"
-		.. "Achievement credit is account-wide, but the game records which character earned each one.",
-		y,
-		function() return ns:ScopeFor("achievements") == "character" end,
-		function(v)
-			ns.db.categoryScope.achievements = v and "character" or "account"
-			ns.db.scope = "auto"
-			ns.UI:SyncFilters()
-		end)
-
-	y = MakeCheck(content, "Exploration: track per character",
-		"On: subzones THIS character has never walked into.\n"
-		.. "Off: subzones nobody on the account has found.",
-		y,
-		function() return ns:ScopeFor("exploration") == "character" end,
-		function(v)
-			ns.db.categoryScope.exploration = v and "character" or "account"
-			ns.db.scope = "auto"
-			ns.UI:SyncFilters()
-		end)
-
-	y = MakeCheck(content, "Quests: track account-wide",
-		"On: hide quests any recorded character has completed.\n"
-		.. "Off: hide only what THIS character has completed.\n\n"
-		.. "Account-wide quest data only covers characters you have logged into since installing "
-		.. "this addon - see the roster at the bottom of this panel.",
-		y,
-		function() return ns:ScopeFor("quests") == "account" end,
-		function(v)
-			ns.db.categoryScope.quests = v and "account" or "character"
-			ns.db.scope = "auto"
-			ns.UI:SyncFilters()
-		end)
-
-	y = MakeCheck(content, "Remember completed quests for account-wide tracking",
-		"Stores this character's completed quest ids so other characters can see what the account has finished. "
-		.. "This makes your SavedVariables file larger.",
-		y,
-		function() return ns.db.quests.storeCompleted end,
-		function(v) ns.db.quests.storeCompleted = v end)
-
-	----------------------------------------------------------------
-	y = y - 8
-	y = MakeHeader(content, "What to track", y)
-
-	local trackNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	trackNote:SetPoint("TOPLEFT", 24, y)
-	trackNote:SetWidth(PANEL_WIDTH - 80)
-	trackNote:SetJustifyH("LEFT")
-	trackNote:SetText("Only things you have not done yet are ever listed.")
-	y = y - 22
-
-	local CATS = {
-		{ "achievements", "Achievements" },
-		{ "exploration",  "Unexplored areas" },
-		{ "treasures",    "Treasures, rares and points of interest" },
-		{ "mounts",       "Mounts" },
-		{ "toys",         "Toys" },
-		{ "pets",         "Battle pets" },
-		{ "transmogsets", "Transmog sets" },
-		{ "heirlooms",    "Heirlooms" },
-		{ "titles",       "Titles (no location data - shows at 'Everywhere' reach only)" },
-	}
-	for _, cat in ipairs(CATS) do
-		local key, label = cat[1], cat[2]
-		y = MakeCheck(content, label, nil, y,
-			function() return ns.db.filters[key] end,
-			function(v) ns.db.filters[key] = v; ns.UI:SyncFilters() end)
-	end
-
-	----------------------------------------------------------------
-	y = y - 8
-	y = MakeHeader(content, "Quest alerts", y)
-
-	local questNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	questNote:SetPoint("TOPLEFT", 24, y)
-	questNote:SetWidth(PANEL_WIDTH - 80)
-	questNote:SetJustifyH("LEFT")
-	questNote:SetText("Quests are not listed in the tracker: the game only ever exposes the quests "
-		.. "it is currently offering you, never the full set for a zone, so a quest column could "
-		.. "not answer \"what is left here\" honestly. Alerts only claim what the game can see.")
-	y = y - 46
-
-	y = MakeSlider(content, "Low-level threshold",
-		"A quest counts as low-level when its level is at least this far below yours.",
-		y, 2, 30, 1,
-		function() return ns.db.quests.trivialLevelGap end,
-		function(v) ns.db.quests.trivialLevelGap = v end,
-		"%s: %s levels below you")
-
-	y = MakeCheck(content, "Enable quest alerts", nil, y,
-		function() return ns.db.alerts.enabled end,
-		function(v) ns.db.alerts.enabled = v end)
-
-	y = MakeCheck(content, "Include low-level quests in alerts",
-		"On: alert about every unaccepted or unfinished quest in the zone, including "
-		.. "ones you have outlevelled - these are the quests that quietly stop showing "
-		.. "on your map and leave a zone unfinished.\n\n"
-		.. "Off: alert only about level-appropriate quests.\n\n"
-		.. "Uses the same low-level threshold as the Quests section above.",
-		y,
-		function() return ns.db.alerts.includeLowLevel end,
-		function(v)
-			ns.db.alerts.includeLowLevel = v
-			ns:Fire("ALERT_MODE_CHANGED")
-		end)
-
-	y = MakeCheck(content, "Count quests you have not picked up yet", nil, y,
-		function() return ns.db.alerts.unaccepted end,
-		function(v) ns.db.alerts.unaccepted = v; ns:Fire("ALERT_MODE_CHANGED") end)
-
-	y = MakeCheck(content, "Count quests already in your log", nil, y,
-		function() return ns.db.alerts.unfinished end,
-		function(v) ns.db.alerts.unfinished = v; ns:Fire("ALERT_MODE_CHANGED") end)
-
-	y = MakeCheck(content, "Alert when you enter a zone", nil, y,
-		function() return ns.db.alerts.onZoneChange end,
-		function(v) ns.db.alerts.onZoneChange = v end)
-
-	y = MakeCheck(content, "Show an on-screen banner", "Right-drag the banner to reposition it.", y,
-		function() return ns.db.alerts.banner end,
-		function(v) ns.db.alerts.banner = v end)
-
-	y = MakeCheck(content, "Print to chat", nil, y,
-		function() return ns.db.alerts.chat end,
-		function(v) ns.db.alerts.chat = v end)
-
-	y = MakeCheck(content, "Play a sound", nil, y,
-		function() return ns.db.alerts.sound end,
-		function(v) ns.db.alerts.sound = v end)
-
-	y = MakeSlider(content, "Re-alert the same zone after",
-		"How long before the same zone is allowed to alert you again.",
-		y, 60, 1800, 30,
-		function() return ns.db.alerts.throttle end,
-		function(v) ns.db.alerts.throttle = v end,
-		"%s: %s seconds")
-
-	MakeButton(content, "Test alert now", y + 6, 24, 160, function()
-		ns:Fire("ALERT_CHECK", true)
-	end)
-	y = y - 28
-
-	----------------------------------------------------------------
 	y = y - 8
 	y = MakeHeader(content, "Achievements", y)
 
@@ -560,7 +403,21 @@ function Config:Build()
 		.. "and how hard the list pulls you toward one kind of content.")
 	y = y - 30
 
-	for _, cat in ipairs(CATS) do
+	-- Kept in step with the main window's filter row; the categories themselves
+	-- are toggled there, only their weighting lives here.
+	local WEIGHT_CATS = {
+		{ "achievements", "Achievements" },
+		{ "exploration",  "Unexplored areas" },
+		{ "treasures",    "Treasures and rares" },
+		{ "mounts",       "Mounts" },
+		{ "toys",         "Toys" },
+		{ "pets",         "Battle pets" },
+		{ "transmogsets", "Transmog sets" },
+		{ "heirlooms",    "Heirlooms" },
+		{ "titles",       "Titles" },
+	}
+
+	for _, cat in ipairs(WEIGHT_CATS) do
 		local key, label = cat[1], cat[2]
 		y = MakeSlider(content, label, nil, y, 0, 3, 0.1,
 			function() return ns.db.weights[key] or 1 end,

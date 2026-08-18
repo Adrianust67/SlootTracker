@@ -40,6 +40,14 @@ local function ApplyParsed(entry, parsed)
 	if parsed.zoneName and parsed.headline then
 		entry.detail = ("%s - %s"):format(parsed.sourceLabel, parsed.headline)
 	end
+
+	-- Locked behind a key or attunement: say so on the row, and let the scorer
+	-- push it below things you can just walk up to.
+	if parsed.locked then
+		entry.locked   = true
+		entry.lockNote = parsed.lockNote
+		entry.detail   = ("|cffff8040%s|r  %s"):format(parsed.lockNote or "locked", entry.detail or "")
+	end
 	return entry
 end
 

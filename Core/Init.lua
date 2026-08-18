@@ -37,7 +37,6 @@ ns.defaults = {
 	categoryScope = {
 		achievements = "character",
 		exploration  = "character",
-		quests       = "account",
 	},
 
 	window = {
@@ -54,7 +53,6 @@ ns.defaults = {
 	filters = {
 		achievements = true,
 		exploration  = true,
-		quests       = true,
 		treasures    = true,
 		mounts       = true,
 		toys         = true,
@@ -69,14 +67,6 @@ ns.defaults = {
 	--   continent = current zone + everything on this continent
 	--   world     = everything, anywhere (slow, mostly useful for planning)
 	reach = "continent",
-
-	quests = {
-		includeTrivial     = false,   -- "all unfinished" vs "level-appropriate only"
-		trivialLevelGap    = 10,      -- questLevel <= playerLevel - gap  => trivial
-		includeWorldQuests = true,
-		includeInLog       = true,    -- quests already accepted
-		storeCompleted     = true,    -- needed for account-wide quest view
-	},
 
 	achievements = {
 		hideStatistics      = true,
@@ -101,23 +91,6 @@ ns.defaults = {
 		hideUnusable     = true,
 	},
 
-	-- Quest alerts.
-	alerts = {
-		enabled      = false,
-		-- The low-level switch, matching quests.includeTrivial above:
-		--   true  = alert about every unaccepted or unfinished quest here
-		--   false = alert only about level-appropriate quests, ignoring the
-		--           ones you have outlevelled
-		includeLowLevel = true,
-		unaccepted   = true,
-		unfinished   = true,
-		onZoneChange = true,
-		chat         = true,
-		banner       = true,
-		sound        = true,
-		throttle     = 300,   -- seconds before the same zone can alert again
-	},
-
 	treasures = {
 		areaPOIs  = true,
 		vignettes = true,
@@ -127,7 +100,6 @@ ns.defaults = {
 	weights = {
 		achievements = 1.0,
 		exploration  = 1.4,
-		quests       = 1.2,
 		treasures    = 1.1,
 		mounts       = 1.5,
 		toys         = 1.2,
@@ -489,15 +461,6 @@ local function InitDB()
 	if ns.db.cache.build ~= ns.build then
 		ns.db.cache = { build = ns.build }
 	end
-
-	-- Migration: the alert switch used to be a mode string whose restrictive
-	-- value meant "low-level only". It now means "include low-level", so the
-	-- restrictive setting maps to false.
-	local alerts = ns.db.alerts
-	if alerts.mode ~= nil then
-		alerts.includeLowLevel = (alerts.mode == "any")
-		alerts.mode = nil
-	end
 end
 
 ns:RegisterEvent("ADDON_LOADED", function(_, name)
@@ -543,7 +506,6 @@ local function Usage()
 	print("  |cffffd100/zc scan|r - force a rescan")
 	print("  |cffffd100/zc auto|r - scope per category (default)")
 	print("  |cffffd100/zc char|r / |cffffd100/zc account|r - force one scope everywhere")
-	print("  |cffffd100/sloot alert off|all|high|r - quest alerts (all quests, or level-appropriate only)")
 	print("  |cffffd100/sloot guild on|off|test|r - nearby guild member detection")
 	print("  |cffffd100/sloot guild out self|guild|say|yell|party|emote|r - where it announces")
 	print("  |cffffd100/zc config|r - open settings")
@@ -575,36 +537,9 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 	elseif cmd == "auto" then
 		ns.db.scope = "auto"
 		ns:Print("scope: |cffffd100per category|r "
-			.. "(achievements + exploration = character, quests + collections = account)")
+			.. "(achievements + exploration = character, collections = account)")
 		ns:Fire("SCOPE_CHANGED")
 		ns:Fire("REQUEST_SCAN", true)
-	elseif cmd == "alert" then
-		if rest == "off" then
-			ns.db.alerts.enabled = false
-			ns:Print("quest alerts |cffff5555off|r")
-		elseif rest == "all" or rest == "any" then
-			ns.db.alerts.enabled, ns.db.alerts.includeLowLevel = true, true
-			ns:Fire("ALERT_MODE_CHANGED")
-			ns:Print("quest alerts |cff40ff40on|r - every unaccepted or unfinished quest")
-		elseif rest == "high" or rest == "highlevel" then
-			ns.db.alerts.enabled, ns.db.alerts.includeLowLevel = true, false
-			ns:Fire("ALERT_MODE_CHANGED")
-			ns:Print("quest alerts |cff40ff40on|r - level-appropriate quests only")
-		elseif rest == "test" then
-			ns:Fire("ALERT_CHECK", true)
-		else
-			ns:Print(("quest alerts are %s, covering |cffffd100%s|r. Use: off / all / high / test"):format(
-				ns.db.alerts.enabled and "|cff40ff40on|r" or "|cffff5555off|r",
-				ns.db.alerts.includeLowLevel and "all quests" or "level-appropriate quests only"))
-		end
-	elseif cmd == "reach" then
-		if rest == "zone" or rest == "continent" or rest == "world" then
-			ns.db.reach = rest
-			ns:Print("reach: |cffffd100" .. rest .. "|r")
-			ns:Fire("REQUEST_SCAN", true)
-		else
-			ns:Print("reach is |cffffd100" .. ns.db.reach .. "|r (zone / continent / world)")
-		end
 	elseif cmd == "guild" then
 		local sub, arg = rest:match("^(%S*)%s*(.*)$")
 		if sub == "on" then

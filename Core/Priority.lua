@@ -88,6 +88,12 @@ end
 
 local function UrgencyFactor(entry)
 	local f = 1.0
+	-- Behind a key, lockbox or attunement: still worth listing, but it should
+	-- not outrank something you can simply walk over to. If we could confirm
+	-- the key is in your bags, the penalty is much lighter.
+	if entry.locked then
+		f = f * (entry.haveKey and 0.75 or 0.3)
+	end
 	if entry.readyForTurnIn then f = f + 1.5 end   -- finish it, it is free points
 	if entry.isWorldQuest    then f = f + 0.4 end   -- expires
 	if entry.isRare          then f = f + 0.5 end   -- up right now

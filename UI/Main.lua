@@ -32,7 +32,6 @@ local listTopInset = 168
 local CATEGORY_COLORS = {
 	achievements = { 0.95, 0.80, 0.20 },
 	exploration  = { 0.45, 0.85, 0.55 },
-	quests       = { 0.40, 0.70, 1.00 },
 	treasures    = { 1.00, 0.55, 0.25 },
 	mounts       = { 0.85, 0.45, 0.95 },
 	toys         = { 0.40, 0.90, 0.90 },
@@ -42,10 +41,10 @@ local CATEGORY_COLORS = {
 	titles       = { 0.80, 0.80, 0.80 },
 }
 
--- Quests are deliberately absent: the game only ever exposes the quests it is
+-- Quests are deliberately absent. The game only ever exposes the quests it is
 -- currently offering you, never the full set for a zone, so a "Quests" column
--- in a completion tracker promised more than it could deliver. Quest coverage
--- lives in the alert system instead, which only claims what it can see.
+-- in a completion tracker promised more than it could deliver. The quest log
+-- and objective tracker already cover what the client actually knows.
 local FILTER_ORDER = {
 	{ key = "achievements", label = "Achievements" },
 	{ key = "exploration",  label = "Exploration" },
@@ -176,6 +175,10 @@ local function ShowRowTooltip(row)
 	if entry.sharedCriteria then
 		GameTooltip:AddLine("The game stores this credit account-wide.", 0.6, 0.6, 0.6)
 	end
+	if entry.locked then
+		GameTooltip:AddLine(entry.lockNote or "Locked behind a key or attunement.", 1, 0.5, 0.25, true)
+		GameTooltip:AddLine("Ranked lower because you cannot just walk up to it.", 0.6, 0.6, 0.6)
+	end
 
 	-- Why is this ranked here?
 	local p = entry.scoreParts
@@ -205,14 +208,6 @@ local function OpenEntry(entry)
 		if AchievementFrame then
 			ShowUIPanel(AchievementFrame)
 			ns.Try(AchievementFrame_SelectAchievement, entry.id)
-		end
-	elseif entry.module == "quests" and entry.questID then
-		if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
-			ns.Try(C_SuperTrack.SetSuperTrackedQuestID, entry.questID)
-		end
-		ns.Try(C_QuestLog.SetSelectedQuest, entry.questID)
-		if QuestMapFrame_OpenToQuestDetails then
-			ns.Try(QuestMapFrame_OpenToQuestDetails, entry.questID)
 		end
 	elseif entry.category == "mounts" or entry.category == "pets" or entry.category == "toys" then
 		ns.Try(function() ToggleCollectionsJournal(entry.category == "mounts" and 1
@@ -434,14 +429,29 @@ local function LayoutPanels()
 	if not frame or not frame.filterOrder then return end
 
 	local usable = frame:GetWidth() - 32
-	local columns = math.max(2, math.floor(usable / FILTER_COL_W))
+
+	-- Measure the widest label rather than trusting a fixed column width: the
+	-- constant was narrower than "Achievements" renders at some UI scales, so
+	-- columns ran into each other as the window shrank.
+	local widest = 0
+	for _, check in ipairs(frame.filterOrder) do
+		if check.text then
+			local w = check.text:GetStringWidth() or 0
+			if w > widest then widest = w end
+		end
+	end
+	local colWidth = math.max(FILTER_COL_W, math.ceil(widest) + 34)
+
+	-- One column is a legitimate outcome on a very narrow window; forcing two
+	-- is what guaranteed the overlap.
+	local columns = math.max(1, math.floor(usable / colWidth))
 	local gridRows = math.ceil(#frame.filterOrder / columns)
 
 	for i, check in ipairs(frame.filterOrder) do
 		local col = (i - 1) % columns
 		local row = math.floor((i - 1) / columns)
 		check:ClearAllPoints()
-		check:SetPoint("TOPLEFT", 16 + col * FILTER_COL_W, -(FILTER_TOP + row * FILTER_ROW_H))
+		check:SetPoint("TOPLEFT", 16 + col * colWidth, -(FILTER_TOP + row * FILTER_ROW_H))
 	end
 
 	local filterBottom = FILTER_TOP + gridRows * FILTER_ROW_H
@@ -643,7 +653,7 @@ function UI:Build()
 			root:CreateButton("Entire account",  function() ns.db.scope = "account";   done() end)
 			root:CreateDivider()
 			root:CreateTitle("Per category")
-			for _, cat in ipairs({ "achievements", "exploration", "quests" }) do
+			for _, cat in ipairs({ "achievements", "exploration" }) do
 				local current = ns:ScopeFor(cat)
 				root:CreateButton(("%s: %s"):format(cat, current), function()
 					ns.db.categoryScope[cat] = (current == "account") and "character" or "account"

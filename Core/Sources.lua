@@ -53,6 +53,56 @@ function Sources:IsRoutable(sourceKey)
 	return not UNROUTABLE[sourceKey]
 end
 
+--------------------------------------------------------------------------
+-- Locked content
+--
+-- Plenty of sources sit behind a key, a lockbox or an attunement. We cannot
+-- resolve an arbitrary requirement to an item id from free text, so this is
+-- deliberately modest: spot the requirement, name it, and let the scorer push
+-- it down. Where the text names the item in brackets we can also check your
+-- bags and say whether you actually hold it.
+--------------------------------------------------------------------------
+
+local LOCK_PATTERNS = {
+	"requires? the ",
+	"requires? a ",
+	"%f[%a]key%f[%A]",
+	"lockbox",
+	"attun",
+	"combination",
+}
+
+-- Returns: locked (bool), note (string or nil), haveItem (true/false/nil)
+function Sources:DetectLock(text)
+	if not text or text == "" then return false end
+
+	local lower = text:lower()
+	local matched
+	for _, pattern in ipairs(LOCK_PATTERNS) do
+		if lower:find(pattern) then matched = true break end
+	end
+	if not matched then return false end
+
+	-- "[Some Key]" is the one form we can actually verify.
+	local itemName = text:match("%[([^%]]+)%]")
+	local haveItem
+	if itemName then
+		local count = ns.Try(C_Item and C_Item.GetItemCount or GetItemCount, itemName)
+		if count ~= nil then haveItem = count > 0 end
+	end
+
+	local note
+	if itemName and haveItem == true then
+		note = ("needs %s - you have it"):format(itemName)
+	elseif itemName then
+		note = ("needs %s - not in your bags"):format(itemName)
+	else
+		note = "may need a key or attunement"
+	end
+
+	return true, note, haveItem
+end
+
 -- First meaningful line of the source blob, used as the row's detail text.
 function Sources:Headline(text)
 	if not text or text == "" then return nil end
@@ -82,6 +132,7 @@ function Sources:Parse(text)
 	out.sourceKey, out.sourceLabel = self:ClassifyText(text)
 	out.headline = self:Headline(text)
 	out.mapID, out.zoneName = ns.Location:MatchZoneInText(text)
+	out.locked, out.lockNote, out.haveKey = self:DetectLock(text)
 	return out
 end
 
@@ -167,6 +218,8 @@ function Sources:SetCached(kind, id, parsed)
 		z = parsed.zoneName,
 		k = parsed.sourceKey,
 		h = parsed.headline,
+		l = parsed.locked or nil,
+		n = parsed.lockNote,
 	}
 end
 
@@ -178,6 +231,7 @@ function Sources:Resolve(kind, id, textProvider)
 			sourceKey = cached.k or "unknown",
 			sourceLabel = cached.k and cached.k:gsub("^%l", string.upper) or "Unknown",
 			headline = cached.h,
+			locked = cached.l, lockNote = cached.n,
 		}
 	end
 

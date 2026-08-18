@@ -92,63 +92,16 @@ end
 --   * GetExploredAreaIDsAtPosition returns area ids at a coordinate. When it
 --     reports an area matching an incomplete criterion, we can average those
 --     points into a real centroid for that named subzone - the ideal case.
---   * Where it returns nothing, that point is map with no explored overlay on
---     it. Clustering those gaps gives approximate "unexplored ground" targets.
 --
--- The same sampling pass feeds both, and results are cached per map because
+-- Points the client reports nothing for are ignored: unmapped ground is just
+-- as often ocean or cliff face as it is unexplored, and guessing there sent
+-- people somewhere they could not reach. Results are cached per map because
 -- the grid costs a few hundred API calls.
 --------------------------------------------------------------------------
 
 local GRID = 22
-local CLUSTER_RADIUS = 0.13
-local MAX_GENERIC = 4
 
 local targetCache = {}
-
-local function ClusterGaps(gaps)
-	local clusters = {}
-	local used = {}
-
-	for _ = 1, MAX_GENERIC do
-		-- Seed on the gap point with the most neighbours, so clusters form
-		-- around the largest unexplored blobs rather than stray edge samples.
-		local bestIdx, bestCount = nil, 0
-		for i, p in ipairs(gaps) do
-			if not used[i] then
-				local count = 0
-				for j, q in ipairs(gaps) do
-					if not used[j] then
-						local dx, dy = p.x - q.x, p.y - q.y
-						if (dx * dx + dy * dy) <= (CLUSTER_RADIUS * CLUSTER_RADIUS) then
-							count = count + 1
-						end
-					end
-				end
-				if count > bestCount then bestIdx, bestCount = i, count end
-			end
-		end
-
-		-- A lone sample or two is noise, not an unexplored region.
-		if not bestIdx or bestCount < 3 then break end
-
-		local seed = gaps[bestIdx]
-		local sx, sy, n = 0, 0, 0
-		for j, q in ipairs(gaps) do
-			if not used[j] then
-				local dx, dy = seed.x - q.x, seed.y - q.y
-				if (dx * dx + dy * dy) <= (CLUSTER_RADIUS * CLUSTER_RADIUS) then
-					used[j] = true
-					sx, sy, n = sx + q.x, sy + q.y, n + 1
-				end
-			end
-		end
-		if n > 0 then
-			table.insert(clusters, { x = sx / n, y = sy / n, weight = n })
-		end
-	end
-
-	return clusters
-end
 
 local function ComputeTargets(mapID, todo)
 	local cached = targetCache[mapID]
@@ -159,7 +112,7 @@ local function ComputeTargets(mapID, todo)
 		if area.areaID and area.areaID > 0 then byArea[area.areaID] = area.index end
 	end
 
-	local sums, gaps = {}, {}
+	local sums = {}
 
 	for gx = 1, GRID do
 		for gy = 1, GRID do
@@ -180,23 +133,23 @@ local function ComputeTargets(mapID, todo)
 						s.x, s.y, s.n = s.x + x, s.y + y, s.n + 1
 					end
 				end
-			else
-				-- No overlay here at all: candidate unexplored ground.
-				table.insert(gaps, { x = x, y = y })
 			end
 		end
 	end
 
-	local result = { precise = {}, generic = {} }
+	local result = { precise = {} }
 	for index, s in pairs(sums) do
 		if s.n > 0 then
 			result.precise[index] = { x = s.x / s.n, y = s.y / s.n }
 		end
 	end
 
-	if next(result.precise) == nil and #gaps > 0 then
-		result.generic = ClusterGaps(gaps)
-	end
+	-- The gap-clustering fallback is deliberately NOT used any more. A point
+	-- with no map overlay is just as likely to be ocean, cliff face, or dead
+	-- space outside the playable zone as it is to be unexplored ground, and it
+	-- sent people toward places they could not reach. A missing pin is honest;
+	-- a confident pin pointing into a mountain is not. Only area-matched
+	-- centroids, which sit inside a real named subzone, are used.
 
 	targetCache[mapID] = result
 	return result
@@ -299,40 +252,6 @@ function Exploration:Scan(ctx)
 					})
 				end
 
-				-- Fallback: the client would not tell us which area sits at
-				-- which coordinate, so we cannot pin the named subzones. Emit
-				-- generic "unexplored ground" stops instead, which is enough
-				-- for the route to send you somewhere useful. Pairing an
-				-- arbitrary cluster with a specific subzone name would be a
-				-- guess dressed up as a fact, so we do not do that.
-				if targets and #targets.generic > 0 then
-					local names = {}
-					for i = 1, math.min(#todo, 3) do table.insert(names, todo[i].name) end
-
-					for i, spot in ipairs(targets.generic) do
-						table.insert(out, {
-							key       = ("explore:area:%d:%d"):format(mapID, i),
-							module    = "exploration",
-							category  = "exploration",
-							id        = achID,
-							name      = "Unexplored ground",
-							icon      = "Interface\\Icons\\INV_Misc_Map_01",
-							mapID     = mapID,
-							x = spot.x, y = spot.y,
-							zoneName  = zoneName,
-							have      = doneCount,
-							need      = num,
-							points    = achPoints,
-							detail    = ("%d areas left in %s - still missing %s%s"):format(
-								#todo, zoneName, table.concat(names, ", "),
-								#todo > #names and ("  (+%d more)"):format(#todo - #names) or ""),
-							link      = ns.Try(GetAchievementLink, achID),
-							typeLabel = "Unexplored",
-							approximate = true,
-							sharedCriteria = true,
-						})
-					end
-				end
 			end
 		end
 	end
