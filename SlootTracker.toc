@@ -2,13 +2,17 @@
 ## Title: Sloot Tracker
 ## Notes: Location-aware completion tracker. Ranks unfinished achievements, unexplored areas, uncollected mounts/toys/pets and open quests by how close they are to you right now.
 ## Author: BadHeffer
-## Version: 1.2.7
+## Version: 1.2.8
 ## IconTexture: Interface\Icons\INV_Misc_Map02
 ## SavedVariables: SlootTrackerDB
 ## SavedVariablesPerCharacter: SlootTrackerCharDB
 ## OptionalDeps: TomTom, EllesmereUI
 ## Category-enUS: Collections
 ## AllowLoadGameType: retail
+
+# Uncomment and fill in once the CurseForge project exists; the packager reads
+# this to know where to upload. Until then CurseForge upload stays dormant.
+# ## X-Curse-Project-ID: 000000
 
 Core\Init.lua
 Core\Location.lua
@@ -20,6 +24,7 @@ Modules\Achievements.lua
 Modules\Exploration.lua
 Modules\Collections.lua
 Modules\Treasures.lua
+Modules\Vendors.lua
 Modules\GuildRadar.lua
 
 UI\Main.lua

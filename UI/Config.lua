@@ -294,6 +294,7 @@ function Config:Build()
 		local order = { zone = "close", close = "both", both = "zone" }
 		ns.db.guildRadar.mode = order[ns.db.guildRadar.mode] or "both"
 		SyncMode()
+		if ns.GuildRadar:NameplateModeBlocked() then ns.GuildRadar:ExplainNameplates() end
 	end)
 	SyncMode()
 	table.insert(content.controls, SyncMode)
@@ -443,6 +444,13 @@ function Config:Build()
 	y = MakeCheck(content, "Rescan automatically when you change zone", nil, y,
 		function() return ns.db.autoRescan end,
 		function(v) ns.db.autoRescan = v end)
+
+	y = MakeCheck(content, "Open the window when you log in",
+		"On: the tracker opens automatically at login and after a reload.\n\n"
+		.. "Off: it comes back only if it was open when you last logged out.",
+		y,
+		function() return ns.db.window.openOnLogin end,
+		function(v) ns.db.window.openOnLogin = v end)
 
 	y = MakeCheck(content, "Close the tracker window with Escape",
 		"Off (default): Escape leaves the window alone, so it survives everything "

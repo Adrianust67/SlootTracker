@@ -41,6 +41,25 @@ local function ApplyParsed(entry, parsed)
 		entry.detail = ("%s - %s"):format(parsed.sourceLabel, parsed.headline)
 	end
 
+	-- Purchasable, and priced from a vendor we have actually seen. The name
+	-- fallback is only consulted for vendor-sourced entries, because matching
+	-- "Swift Zhevra" against merchant stock by name is a heuristic and should
+	-- not be applied to things that are not sold in the first place.
+	if ns.Vendors then
+		local price = ns.Vendors:Evaluate(entry.itemID,
+			parsed.sourceKey == "vendor" and entry.name or nil)
+		if price then
+			entry.costText   = price.costText
+			entry.affordable = price.affordable
+
+			local colour = (price.affordable == true and "|cff40ff40")
+				or (price.affordable == false and "|cffff8040") or "|cffaaaaaa"
+			local suffix = (price.affordable == true and " - you can afford this")
+				or (price.affordable == false and " - not enough") or ""
+			entry.detail = ("%s%s%s|r  %s"):format(colour, price.costText, suffix, entry.detail or "")
+		end
+	end
+
 	-- Locked behind a key or attunement: say so on the row, and let the scorer
 	-- push it below things you can just walk up to.
 	if parsed.locked then

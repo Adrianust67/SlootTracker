@@ -95,6 +95,16 @@ local function UrgencyFactor(entry)
 		f = f + 0.6                        -- about to despawn
 	end
 
+	-- Something you can buy right now is about as actionable as content gets,
+	-- so it is promoted; something priced beyond your purse is not, so it
+	-- drops. A price we never learned leaves affordable as nil and changes
+	-- nothing - unknown is not the same as unaffordable.
+	if entry.affordable == true then
+		f = f * 1.6
+	elseif entry.affordable == false then
+		f = f * 0.35
+	end
+
 	-- Behind a key, lockbox or attunement: still worth listing, but it must not
 	-- outrank something you can simply walk over to. Much lighter when we could
 	-- confirm the key is actually in your bags.
@@ -103,11 +113,16 @@ local function UrgencyFactor(entry)
 	end
 
 	-- A meta-achievement gated behind other unfinished achievements cannot be
-	-- acted on from here at all, however near it nominally is. The penalty
-	-- scales with how many stand in the way, so a meta one achievement short
-	-- stays visible while one that is five deep sinks out of sight.
+	-- acted on from here at all, however near it nominally is.
+	--
+	-- Count alone is not enough. "One achievement away" reads as nearly done,
+	-- but if that one achievement is itself a meta with six of its own, the
+	-- real distance is far greater and the shape of the work is different -
+	-- you cannot finish any of it in one sitting. So stacked tiers are
+	-- penalised on top of the raw count.
 	if entry.metaRemaining and entry.metaRemaining > 0 then
-		f = f / (1 + entry.metaRemaining * 0.9)
+		local tier = entry.metaTier or 1
+		f = f / (1 + entry.metaRemaining * 0.9 + math.max(0, tier - 1) * 2.0)
 	end
 
 	return f

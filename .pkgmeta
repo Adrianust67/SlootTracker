@@ -1,0 +1,16 @@
+# BigWigs packager configuration.
+#
+# package-as is set explicitly rather than relying on the repository name, so
+# renaming the repo can never silently produce a zip that extracts to the wrong
+# folder and stops the addon loading.
+
+package-as: SlootTracker
+
+enable-nolib-creation: no
+
+# Development-only files that should not ship inside the addon folder.
+ignore:
+  - .github
+  - .gitattributes
+  - .gitignore
+  - .pkgmeta

@@ -47,6 +47,8 @@ ns.defaults = {
 		closeOnEscape = false,
 		-- Remember whether it was open, so it comes back as you left it.
 		shown = false,
+		-- Always open on login, regardless of how you left it.
+		openOnLogin = true,
 	},
 
 	-- Which content categories feed the list.
@@ -549,6 +551,7 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 			ns.db.guildRadar.enabled = true
 			ns:Print(("guild radar |cff40ff40on|r - announcing to |cffffd100%s|r"):format(
 				ns.GuildRadar:OutputLabel(ns.db.guildRadar.output)))
+			if ns.GuildRadar:NameplateModeBlocked() then ns.GuildRadar:ExplainNameplates() end
 		elseif sub == "off" then
 			ns.db.guildRadar.enabled = false
 			ns:Print("guild radar |cffff5555off|r")
@@ -578,6 +581,7 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 			if arg == "zone" or arg == "close" or arg == "both" then
 				ns.db.guildRadar.mode = arg
 				ns:Print(("guild radar mode |cffffd100%s|r"):format(arg))
+				if ns.GuildRadar:NameplateModeBlocked() then ns.GuildRadar:ExplainNameplates() end
 			else
 				ns:Print("use: zone (same zone) / close (nameplate range) / both")
 			end

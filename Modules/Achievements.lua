@@ -159,39 +159,99 @@ local META_MAX_DEPTH = 4
 
 local metaCache = {}
 
--- Returns isMeta, stepsAway, { names of the first few missing prerequisites }
+-- Not every meta criterion reports type 8, which is why a second tier could go
+-- unrecognised and contribute nothing to the count. Where the type does not say
+-- so, confirm by resolving the asset as an achievement and matching its name
+-- against the criterion text - that is exactly how the game renders these rows,
+-- and it avoids false positives from the many other criteria types that also
+-- carry an assetID (explore areas, items, and so on).
+local function IsAchievementCriterion(criteriaType, assetID, criteriaString)
+	if not assetID or assetID <= 0 then return false end
+	if criteriaType == CRITERIA_TYPE_ACHIEVEMENT then return true end
+	if not criteriaString or criteriaString == "" then return false end
+
+	local name = select(2, ns.Try(GetAchievementInfo, assetID))
+	return name ~= nil and name == criteriaString
+end
+
+-- Unfinished criteria on an achievement, whatever their type.
+--
+-- A prerequisite does not have to be a meta to hide a pile of work behind it.
+-- Battle for Azeroth Pathfinder, Part One is one achievement short - but that
+-- one is Azerothian Diplomat, whose criteria are reputations rather than
+-- achievements. Counting only meta-in-meta would report that chain as "1 away"
+-- when it is really seven pieces of work.
+local function RemainingCriteria(achID)
+	local num = ns.Try(GetAchievementNumCriteria, achID) or 0
+	if num == 0 then return 0 end
+
+	local remaining = 0
+	for i = 1, num do
+		local _, _, completed = ns.Try(GetAchievementCriteriaInfo, achID, i)
+		if not completed then remaining = remaining + 1 end
+	end
+	return remaining
+end
+
+-- Returns isMeta, stepsAway, { descriptions of missing prerequisites }, tier
+--   stepsAway = every unfinished achievement in the whole tree below this one
+--   tier      = how many levels of meta are stacked up (1 = plain prerequisites,
+--               2 = a prerequisite is itself a meta, and so on)
 local function MetaInfo(achID, depth)
 	local cached = metaCache[achID]
-	if cached then return cached.isMeta, cached.steps, cached.names end
+	if cached then return cached.isMeta, cached.steps, cached.names, cached.tier end
 
 	depth = depth or 0
-	if depth > META_MAX_DEPTH then return false, 0, nil end
+	if depth > META_MAX_DEPTH then return false, 0, nil, 0 end
 
 	local num = ns.Try(GetAchievementNumCriteria, achID) or 0
-	local isMeta, steps, names = false, 0, {}
+	local isMeta, steps, names, tier = false, 0, {}, 0
 
 	for i = 1, num do
 		local criteriaString, criteriaType, completed, _, _, _, _, assetID =
 			ns.Try(GetAchievementCriteriaInfo, achID, i)
 
-		if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID and assetID > 0 then
+		if IsAchievementCriterion(criteriaType, assetID, criteriaString) then
 			isMeta = true
 			if not completed then
 				steps = steps + 1
+
+				-- One call: results below depth 0 are not memoised, so asking
+				-- twice would recompute the entire subtree.
+				local subIsMeta, subSteps, _, subTier = MetaInfo(assetID, depth + 1)
+				subTier = subTier or 0
+
+				-- Work hidden below this prerequisite, whichever form it takes.
+				local hidden, thisTier = 0, 1
+				if subIsMeta and subSteps > 0 then
+					hidden = subSteps
+					thisTier = 1 + math.max(1, subTier)
+				else
+					-- Not a meta, but its own unfinished criteria are still
+					-- things you have to go and do first.
+					hidden = RemainingCriteria(assetID)
+					if hidden > 0 then thisTier = 2 end
+				end
+
+				steps = steps + hidden
+				if thisTier > tier then tier = thisTier end
+
 				if #names < 3 then
 					local subName = select(2, ns.Try(GetAchievementInfo, assetID))
-					table.insert(names, subName or criteriaString or ("#" .. assetID))
+						or criteriaString or ("#" .. assetID)
+					if hidden > 0 then
+						subName = ("%s |cff888888(+%d behind it)|r"):format(subName, hidden)
+					end
+					table.insert(names, subName)
 				end
-				local subIsMeta, subSteps = MetaInfo(assetID, depth + 1)
-				if subIsMeta then steps = steps + subSteps end
 			end
 		end
 	end
 
 	if depth == 0 then
-		metaCache[achID] = { isMeta = isMeta, steps = steps, names = names }
+		metaCache[achID] = { isMeta = isMeta, steps = steps, names = names, tier = tier }
 	end
-	return isMeta, steps, names
+	return isMeta, steps, names, tier
 end
 
 function Achievements:ClearMetaCache()
@@ -262,7 +322,7 @@ local function BuildEntry(achID)
 	end
 
 	-- How far away is this, really?
-	local isMeta, steps, blockers = MetaInfo(achID)
+	local isMeta, steps, blockers, metaTier = MetaInfo(achID)
 	local stepsAway = isMeta and steps
 		or (have and need and (need - have)) or nil
 
@@ -275,8 +335,10 @@ local function BuildEntry(achID)
 	if isMeta and steps > 0 then
 		-- A meta behind other achievements is the case where "Missing: ..."
 		-- criteria text is useless; what matters is how many are in the way.
-		detail = ("|cffff8040%d achievement%s away|r - %s"):format(
-			steps, steps == 1 and "" or "s",
+		local tierNote = (metaTier and metaTier > 1)
+			and (" |cffff8040(%d tiers deep)|r"):format(metaTier) or ""
+		detail = ("|cffff8040%d achievement%s away|r%s - %s"):format(
+			steps, steps == 1 and "" or "s", tierNote,
 			blockers and #blockers > 0 and table.concat(blockers, ", ") or "prerequisites unfinished")
 	elseif missing and #missing > 0 then
 		detail = "Missing: " .. table.concat(missing, ", ")
@@ -305,6 +367,7 @@ local function BuildEntry(achID)
 		missing   = missing,
 		isMeta        = isMeta or nil,
 		metaRemaining = (isMeta and steps > 0) and steps or nil,
+		metaTier      = (isMeta and steps > 0) and metaTier or nil,
 		stepsAway     = stepsAway,
 		earnedByAlt = completed and not wasEarnedByMe or nil,
 		link      = ns.Try(GetAchievementLink, achID),

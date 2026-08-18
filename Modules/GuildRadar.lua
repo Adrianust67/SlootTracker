@@ -106,6 +106,31 @@ local function ShortName(name)
 	return (name:match("^([^%-]+)")) or name
 end
 
+-- Nameplate detection is entirely dependent on friendly player nameplates
+-- being switched on, and they are off by default. Without them the game never
+-- fires NAME_PLATE_UNIT_ADDED for a guildmate, so "close" mode can never see
+-- anyone and silently does nothing.
+function GuildRadar:FriendlyNameplatesEnabled()
+	local ok = ns.Try(GetCVarBool, "nameplateShowFriends")
+	if ok == nil then return true end   -- cannot tell; assume fine
+	return ok and true or false
+end
+
+function GuildRadar:NameplateModeBlocked()
+	local mode = ns.db.guildRadar.mode
+	if mode ~= "close" and mode ~= "both" then return false end
+	return not self:FriendlyNameplatesEnabled()
+end
+
+-- Turning them on is a one-line CVar change, but it is the player's UI, so we
+-- ask rather than doing it behind their back.
+function GuildRadar:ExplainNameplates()
+	ns:Print("|cffff8040nearby detection needs friendly nameplates.|r")
+	print("  They are off, so the game never tells the addon a guildmate is in view.")
+	print("  Either turn them on:  |cffffd100/console nameplateShowFriends 1|r")
+	print("  or switch to zone detection:  |cffffd100/sloot guild mode zone|r")
+end
+
 -- Ask the server for a fresh roster, but no more than the game allows.
 local function RequestRoster()
 	if not IsInGuild() then return end
@@ -188,9 +213,18 @@ function GuildRadar:Check(force)
 		local n = 0
 		for _ in pairs(found) do n = n + 1 end
 		if n == 0 then
-			ns:Print("no guild members detected nearby.")
+			-- Say why nothing was found, not just that nothing was found.
+			ns:Print(("no guild members detected. Mode |cffffd100%s|r, %d online guild members."):format(
+				cfg.mode, ns.Try(GetNumGuildMembers) or 0))
+			if self:NameplateModeBlocked() then
+				self:ExplainNameplates()
+			elseif cfg.mode == "close" then
+				print("  Nobody is close enough to have a nameplate up. "
+					.. "|cffffd100/sloot guild mode zone|r widens it to the whole zone.")
+			end
 		else
-			ns:Print(("%d guild member(s) nearby, but all announced recently."):format(n))
+			ns:Print(("%d guild member(s) nearby, but all announced recently. "
+				.. "|cffffd100/sloot guild reset|r clears the cooldowns."):format(n))
 		end
 	end
 end

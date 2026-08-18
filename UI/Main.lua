@@ -14,7 +14,7 @@ local ADDON, ns = ...
 local UI = {}
 ns.UI = UI
 
-local ROW_HEIGHT     = 32
+local ROW_HEIGHT     = 28
 local LIST_BOTTOM    = 30
 
 -- Filter grid geometry. The number of columns is derived from the window
@@ -175,6 +175,15 @@ local function ShowRowTooltip(row)
 	if entry.sharedCriteria then
 		GameTooltip:AddLine("The game stores this credit account-wide.", 0.6, 0.6, 0.6)
 	end
+	if entry.costText then
+		local r, g, b = 0.7, 0.7, 0.7
+		if entry.affordable == true then r, g, b = 0.4, 1, 0.4
+		elseif entry.affordable == false then r, g, b = 1, 0.5, 0.25 end
+		GameTooltip:AddDoubleLine("Cost", entry.costText, 0.6, 0.6, 0.6, r, g, b)
+		if entry.affordable == false then
+			GameTooltip:AddLine("You cannot afford this yet.", 1, 0.5, 0.25)
+		end
+	end
 	if entry.locked then
 		GameTooltip:AddLine(entry.lockNote or "Locked behind a key or attunement.", 1, 0.5, 0.25, true)
 		GameTooltip:AddLine("Ranked lower because you cannot just walk up to it.", 0.6, 0.6, 0.6)
@@ -184,6 +193,10 @@ local function ShowRowTooltip(row)
 		GameTooltip:AddDoubleLine(label, tostring(entry.stepsAway), 0.6, 0.6, 0.6, 1, 1, 1)
 	end
 	if entry.metaRemaining and entry.metaRemaining > 0 then
+		if entry.metaTier and entry.metaTier > 1 then
+			GameTooltip:AddDoubleLine("Chain depth",
+				("%d tiers of achievements"):format(entry.metaTier), 0.6, 0.6, 0.6, 1, 0.5, 0.25)
+		end
 		GameTooltip:AddLine("Earned by completing other achievements - ranked lower until "
 			.. "those are done.", 1, 0.5, 0.25, true)
 	end
@@ -301,25 +314,38 @@ local function CreateRow(parent, index)
 	row.rank:SetWidth(24)
 	row.rank:SetJustifyH("RIGHT")
 
-	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	row.name:SetPoint("TOPLEFT", row.rank, "TOPRIGHT", 6, 1)
-	row.name:SetJustifyH("LEFT")
-	row.name:SetWidth(300)
-
-	row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	row.detail:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -1)
-	row.detail:SetJustifyH("LEFT")
-	row.detail:SetWidth(300)
-
+	-- The right-hand block is created first so the name and detail can anchor
+	-- their right edge to it and stretch with the window. They used to be a
+	-- fixed 300px, which meant a wide window still wrapped them onto a second
+	-- line inside a fixed-height row.
 	row.zone = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	row.zone:SetPoint("RIGHT", -90, 6)
 	row.zone:SetJustifyH("RIGHT")
 	row.zone:SetWidth(160)
+	row.zone:SetWordWrap(false)
 
 	row.dist = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	row.dist:SetPoint("RIGHT", -90, -6)
 	row.dist:SetJustifyH("RIGHT")
 	row.dist:SetWidth(160)
+	row.dist:SetWordWrap(false)
+
+	-- Single line each, ellipsised. A row is a fixed height, so wrapping could
+	-- only ever spill into the row below.
+	-- Anchored to the row, not to the rank text: the rank is vertically centred,
+	-- so hanging the name off it made the text block's position depend on the
+	-- rank font's height and pushed it below centre.
+	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 66, -3)
+	row.name:SetPoint("RIGHT", row.zone, "LEFT", -10, 0)
+	row.name:SetJustifyH("LEFT")
+	row.name:SetWordWrap(false)
+
+	row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	row.detail:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -1)
+	row.detail:SetPoint("RIGHT", row.zone, "LEFT", -10, 0)
+	row.detail:SetJustifyH("LEFT")
+	row.detail:SetWordWrap(false)
 
 	row.progress = CreateFrame("StatusBar", nil, row)
 	row.progress:SetSize(72, 10)
@@ -1065,11 +1091,10 @@ ns:On("PLAYER_READY", function()
 	UI:Build()
 	CreateMinimapButton()
 
-	-- Reopen if it was open when you logged out or reloaded.
-	if frame and frame.restoreShown then
-		frame:Show()
-		UI:SyncFilters()
-		ns:Fire("REQUEST_SCAN")
+	-- Open on login when asked to, otherwise reopen only if it was open when
+	-- you logged out or reloaded.
+	if frame and (ns.db.window.openOnLogin or frame.restoreShown) then
+		UI:Show()
 	end
 end)
 

@@ -1,6 +1,8 @@
 name: Package and release
 
 # Fires when you push a version tag, e.g. `git tag v1.0.1 && git push --tags`.
+# A tag containing "alpha" or "beta" (e.g. v1.3.0-beta.1) is classified as a
+# pre-release rather than a stable one.
 on:
   push:
     tags:
@@ -21,10 +23,18 @@ jobs:
           fetch-depth: 0
 
       # BigWigsMods/packager is the standard World of Warcraft addon packager.
-      # With no .pkgmeta it zips the repo root into a folder named after the
-      # repository - so the repo MUST be named SlootTracker for the zip to
-      # extract as Interface/AddOns/SlootTracker.
-      - name: Package and upload to GitHub Releases
+      # The addon folder name comes from package-as in .pkgmeta.
+      #
+      # CurseForge upload is wired but dormant. It activates only once BOTH of
+      # these exist, so this is safe to leave in place indefinitely:
+      #   1. a CF_API_KEY repository secret
+      #        Settings > Secrets and variables > Actions > New repository secret
+      #   2. a "## X-Curse-Project-ID: <id>" line in SlootTracker.toc
+      #        (the numeric id shown on the CurseForge project page)
+      # With either missing the packager simply skips CurseForge and publishes
+      # the GitHub release exactly as it does today.
+      - name: Package and upload
         uses: BigWigsMods/packager@v2
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
