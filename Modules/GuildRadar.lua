@@ -57,19 +57,40 @@ end
 -- Message building
 --------------------------------------------------------------------------
 
--- Tokens the template understands.
-local function BuildMessage(template, info)
-	local zone = ns.Location:Get().zoneName or "here"
-	local count = #ns.Priority.entries
-	local points = ns.Priority.pointsAvailable or 0
+GuildRadar.DEFAULT_TEMPLATE = "%name% is %how% - %count% things to do in %zone%"
 
-	local text = template or "%name% is nearby in %zone%"
-	text = text:gsub("%%name%%",   info.name or "?")
-	text = text:gsub("%%zone%%",   zone)
-	text = text:gsub("%%count%%",  tostring(count))
-	text = text:gsub("%%points%%", tostring(points))
-	text = text:gsub("%%how%%",    info.how == "close" and "right next to you" or "in this zone")
+-- Substituted generically rather than one gsub per token, so tokens are
+-- case-insensitive (%Name% works as well as %name%) and anything unrecognised
+-- is left untouched instead of silently vanishing.
+local function BuildMessage(template, info)
+	local values = {
+		name   = info.name or "?",
+		zone   = ns.Location:Get().zoneName or "here",
+		count  = tostring(#ns.Priority.entries),
+		points = tostring(ns.Priority.pointsAvailable or 0),
+		how    = info.how == "close" and "right next to you" or "in this zone",
+	}
+
+	local text = template or GuildRadar.DEFAULT_TEMPLATE
+	text = text:gsub("%%(%a+)%%", function(token)
+		return values[token:lower()]   -- nil leaves the original text in place
+	end)
 	return text
+end
+
+-- A message announcing a guildmate that never mentions them is almost always
+-- an oversight, so it is worth pointing out once rather than leaving the
+-- player wondering why the name never appears.
+function GuildRadar:TemplateMentionsName()
+	local template = ns.db.guildRadar.template or ""
+	return template:lower():find("%%name%%") ~= nil
+end
+
+function GuildRadar:ExplainTemplate()
+	ns:Print("|cffff8040your message never mentions who was found.|r")
+	print("  Add |cffffd100%name%|r where the name should go, for example:")
+	print("    |cffffd100/sloot guild msg Hello there %name%, fellow Sloot !!!|r")
+	print("  Tokens: |cffffd100%name% %zone% %count% %points% %how%|r")
 end
 
 local function Emit(text)
@@ -89,10 +110,12 @@ local function Emit(text)
 		return false
 	end
 
-	local ok = ns.Try(SendChatMessage, text, output)
-	if ok == nil then
-		-- SendChatMessage failed or was blocked; never silently swallow it.
-		ns:Print(text .. " |cff888888(could not send to " .. output .. ")|r")
+	-- TryOk, not Try: SendChatMessage returns nothing, so a nil result means
+	-- "returned nothing", not "failed". Testing the return value reported every
+	-- successful send as a failure.
+	local ok = ns.TryOk(SendChatMessage, text, output)
+	if not ok then
+		ns:Print(("could not send to %s - shown here instead: %s"):format(output, text))
 	end
 	return true
 end

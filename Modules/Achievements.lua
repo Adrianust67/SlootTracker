@@ -20,6 +20,7 @@ ns:RegisterProvider(Achievements)
 
 local CATEGORY_FEATS_OF_STRENGTH = 81
 local CATEGORY_LEGACY            = 15234
+local CATEGORY_PVP               = 95
 local ACHIEVEMENT_FLAG_STATISTIC = 0x1
 
 -- Runtime views rebuilt from the cached index.
@@ -81,7 +82,7 @@ function Achievements:BuildIndex(onDone)
 		return nil
 	end
 
-	local zoneOf, special, unzonedList = {}, {}, {}
+	local zoneOf, special, unzonedList, pvpSet = {}, {}, {}, {}
 	local ci = 0
 
 	ns:RunTask("ST:AchIndex", function()
@@ -91,6 +92,7 @@ function Achievements:BuildIndex(onDone)
 
 		local isFoS    = CategoryIsUnder(catID, CATEGORY_FEATS_OF_STRENGTH, categoryParent)
 		local isLegacy = CategoryIsUnder(catID, CATEGORY_LEGACY, categoryParent)
+		local isPvP    = CategoryIsUnder(catID, CATEGORY_PVP, categoryParent)
 		local catMap   = ResolveCategoryZone(catID)
 
 		local count = ns.Try(GetCategoryNumAchievements, catID, true) or 0
@@ -108,6 +110,9 @@ function Achievements:BuildIndex(onDone)
 				if mapID then zoneOf[achID] = mapID else table.insert(unzonedList, achID) end
 				if isFoS then special[achID] = "fos"
 				elseif isLegacy then special[achID] = "legacy" end
+				-- Kept separate from special: an achievement can be both a Feat
+				-- of Strength and a PvP one, and one slot cannot say both.
+				if isPvP then pvpSet[achID] = true end
 			end
 		end
 
@@ -116,6 +121,7 @@ function Achievements:BuildIndex(onDone)
 		cache.zoneOf  = zoneOf
 		cache.special = special
 		cache.unzoned = unzonedList
+		cache.pvp     = pvpSet
 		Achievements:RebuildViews()
 		ns:Debug(("achievement index: %d zoned, %d unzoned"):format(
 			(function() local n = 0 for _ in pairs(zoneOf) do n = n + 1 end return n end)(), #unzonedList))
@@ -365,6 +371,7 @@ local function BuildEntry(achID)
 		progress  = progress,
 		detail    = detail,
 		missing   = missing,
+		isPvP         = (CacheRoot().pvp and CacheRoot().pvp[achID]) or nil,
 		isMeta        = isMeta or nil,
 		metaRemaining = (isMeta and steps > 0) and steps or nil,
 		metaTier      = (isMeta and steps > 0) and metaTier or nil,

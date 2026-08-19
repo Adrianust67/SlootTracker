@@ -36,6 +36,7 @@ local function ApplyParsed(entry, parsed)
 	entry.mapID     = parsed.mapID
 	entry.zoneName  = parsed.zoneName
 	entry.sourceKey = parsed.sourceKey
+	entry.isPvP     = parsed.isPvP or nil
 	entry.detail    = parsed.headline or parsed.sourceLabel
 	if parsed.zoneName and parsed.headline then
 		entry.detail = ("%s - %s"):format(parsed.sourceLabel, parsed.headline)

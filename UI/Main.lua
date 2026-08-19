@@ -1,8 +1,8 @@
 --[[--------------------------------------------------------------------------
 	SlootTracker - UI/Main.lua
 
-	The window: scope + reach selectors, category filters, the planned route
-	strip, and the ranked list.
+	The window: reach selector, category filters, the planned route strip, and
+	the ranked list. Scope lives in settings - nobody changes it twice.
 
 	The list is a hand-rolled recycling scroller rather than a ScrollBox. It
 	only ever creates as many row frames as fit on screen, and it survives
@@ -39,6 +39,7 @@ local CATEGORY_COLORS = {
 	transmogsets = { 0.90, 0.60, 0.70 },
 	heirlooms    = { 0.60, 0.75, 0.95 },
 	titles       = { 0.80, 0.80, 0.80 },
+	decor        = { 0.95, 0.70, 0.45 },
 }
 
 -- Quests are deliberately absent. The game only ever exposes the quests it is
@@ -55,6 +56,7 @@ local FILTER_ORDER = {
 	{ key = "transmogsets", label = "Transmog" },
 	{ key = "heirlooms",    label = "Heirlooms" },
 	{ key = "titles",       label = "Titles" },
+	{ key = "decor",        label = "Decor" },
 }
 
 local frame, rows, slider, scrollOffset = nil, {}, nil, 0
@@ -71,13 +73,16 @@ local function CategoryColor(entry)
 end
 
 local function FormatDistance(entry)
-	if entry.distance then
-		if entry.distance < 1000 then
-			return ("%d yd"):format(entry.distance)
-		end
-		return ("%.1f k"):format(entry.distance / 1000)
+	if not entry.distance then return nil end
+
+	-- A leading tilde marks a distance measured to the middle of a zone rather
+	-- than to an actual spot, so a rough number is never mistaken for a precise
+	-- one.
+	local prefix = entry.approximateDistance and "~" or ""
+	if entry.distance < 1000 then
+		return ("%s%d yd"):format(prefix, entry.distance)
 	end
-	return nil
+	return ("%s%.1f k"):format(prefix, entry.distance / 1000)
 end
 
 -- Dropdown-ish button. Uses the modern menu system where present and falls
@@ -206,6 +211,9 @@ local function ShowRowTooltip(row)
 	if p and ns.db.debug then
 		GameTooltip:AddLine(" ")
 		GameTooltip:AddDoubleLine("Score", ("%.0f"):format(entry.score or 0), 0.6, 0.6, 0.6, 1, 0.82, 0)
+		GameTooltip:AddDoubleLine("  reach tier", tostring(entry.tier), 0.5, 0.5, 0.5, 0.9, 0.9, 0.9)
+		GameTooltip:AddDoubleLine("  map", ("%s (%s)"):format(
+			tostring(entry.mapID), entry.zoneName or "?"), 0.5, 0.5, 0.5, 0.9, 0.9, 0.9)
 		GameTooltip:AddDoubleLine("  weight x proximity",
 			("%.2f x %.2f"):format(p.weight, p.proximity), 0.5, 0.5, 0.5, 0.9, 0.9, 0.9)
 		GameTooltip:AddDoubleLine("  progress x urgency",
@@ -217,6 +225,8 @@ local function ShowRowTooltip(row)
 	GameTooltip:AddLine(" ")
 	if entry.x and entry.y then
 		GameTooltip:AddLine("Left-click: set waypoint", 0.4, 0.8, 0.4)
+	elseif entry.mapID then
+		GameTooltip:AddLine("Left-click: waypoint to the middle of the zone", 0.4, 0.8, 0.4)
 	end
 	GameTooltip:AddLine("Shift-click: link in chat", 0.4, 0.8, 0.4)
 	GameTooltip:AddLine("Right-click: more options", 0.4, 0.8, 0.4)
@@ -243,9 +253,10 @@ local function RowContextMenu(row)
 	local function Build(_, root)
 		root:CreateTitle(entry.name or "Entry")
 
-		if entry.x and entry.y then
-			root:CreateButton("Set waypoint", function()
-				ns.Location:SetWaypoint(entry.mapID, entry.x, entry.y, entry.name)
+		local mapID, wx, wy, rough = ns.Location:BestPosition(entry)
+		if mapID then
+			root:CreateButton(rough and "Set waypoint (zone centre)" or "Set waypoint", function()
+				ns.Location:SetWaypoint(mapID, wx, wy, entry.name, rough)
 			end)
 		end
 		root:CreateButton("Open in game UI", function() OpenEntry(entry) end)
@@ -376,8 +387,12 @@ local function CreateRow(parent, index)
 			RowContextMenu(self)
 			return
 		end
-		if entry.x and entry.y then
-			ns.Location:SetWaypoint(entry.mapID, entry.x, entry.y, entry.name)
+		-- Clicking anything with a known zone should point you at it. Falling
+		-- through to the collections journal for everything without exact
+		-- coordinates meant vendor and drop mounts did nothing useful.
+		local mapID, x, y, rough = ns.Location:BestPosition(entry)
+		if mapID then
+			ns.Location:SetWaypoint(mapID, x, y, entry.name, rough)
 		else
 			OpenEntry(entry)
 		end
@@ -613,11 +628,9 @@ function UI:Build()
 		})
 	end
 
-	-- Deliberately NOT in UISpecialFrames by default. That list is for modal
-	-- panels you dismiss with Escape; a persistent tracker is not one, and in
-	-- a raid you hit Escape constantly. Use the X, or the toggle. Opt in via
-	-- settings if you want the Escape behaviour back.
-	UI:ApplyEscapeClose()
+	-- Never registered in UISpecialFrames: that list is for modal panels you
+	-- dismiss with Escape, and a persistent tracker is not one. You press
+	-- Escape constantly while playing. Close it with the X in the corner.
 
 	-- Title bar / dragging
 	local titleBar = CreateFrame("Frame", nil, frame)
@@ -673,35 +686,6 @@ function UI:Build()
 	-- Control row: scope, reach, search, actions
 	--------------------------------------------------------------------
 
-	local SCOPE_LABEL = {
-		auto      = "Scope: Per category",
-		character = "Scope: This character",
-		account   = "Scope: Entire account",
-	}
-	frame.scope = CreateSelector(frame, 170,
-		function() return SCOPE_LABEL[ns.db.scope] or "Scope" end,
-		function(root, done)
-			root:CreateTitle("Track completion for")
-			root:CreateButton("Per category (recommended)", function() ns.db.scope = "auto"; done() end)
-			root:CreateButton("This character",  function() ns.db.scope = "character"; done() end)
-			root:CreateButton("Entire account",  function() ns.db.scope = "account";   done() end)
-			root:CreateDivider()
-			root:CreateTitle("Per category")
-			for _, cat in ipairs({ "achievements", "exploration" }) do
-				local current = ns:ScopeFor(cat)
-				root:CreateButton(("%s: %s"):format(cat, current), function()
-					ns.db.categoryScope[cat] = (current == "account") and "character" or "account"
-					ns.db.scope = "auto"
-					done()
-				end)
-			end
-		end,
-		function()
-			ns.db.scope = (ns.db.scope == "auto" and "character")
-			           or (ns.db.scope == "character" and "account") or "auto"
-		end)
-	frame.scope:SetPoint("TOPLEFT", 16, -38)
-
 	local REACH_LABEL = { zone = "Reach: This zone", continent = "Reach: Continent", world = "Reach: Everywhere" }
 	frame.reach = CreateSelector(frame, 150,
 		function() return REACH_LABEL[ns.db.reach] or "Reach" end,
@@ -715,7 +699,7 @@ function UI:Build()
 			ns.db.reach = (ns.db.reach == "zone" and "continent")
 			           or (ns.db.reach == "continent" and "world") or "zone"
 		end)
-	frame.reach:SetPoint("LEFT", frame.scope, "RIGHT", 6, 0)
+	frame.reach:SetPoint("TOPLEFT", 16, -38)
 
 	-- No Settings button here on purpose: everything configurable lives in the
 	-- game's own options panel (Esc > Options > AddOns > Sloot Tracker), or
@@ -884,24 +868,11 @@ function UI:GetFrame()
 	return frame
 end
 
--- Escape-to-close is opt-in. UISpecialFrames is a plain global array, so the
--- entry is added or stripped whenever the setting changes.
-function UI:ApplyEscapeClose()
-	local name = "SlootTrackerFrame"
-	for i = #UISpecialFrames, 1, -1 do
-		if UISpecialFrames[i] == name then table.remove(UISpecialFrames, i) end
-	end
-	if ns.db.window.closeOnEscape then
-		table.insert(UISpecialFrames, name)
-	end
-end
-
 function UI:SyncFilters()
 	if not frame then return end
 	for key, check in pairs(frame.filterButtons) do
 		check:SetChecked(ns.db.filters[key] and true or false)
 	end
-	if frame.scope then frame.scope:Sync() end
 	if frame.reach then frame.reach:Sync() end
 end
 
@@ -1079,7 +1050,6 @@ local function CreateMinimapButton()
 	button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 	Reposition()
-	if ns.db.hideMinimapButton then button:Hide() end
 	ns.minimapButton = button
 end
 

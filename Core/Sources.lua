@@ -54,6 +54,40 @@ function Sources:IsRoutable(sourceKey)
 end
 
 --------------------------------------------------------------------------
+-- PvP content
+--
+-- Detected separately from the primary classification, because a PvP mount
+-- bought from a vendor classifies as "Vendor" - the PvP-ness is in the rest
+-- of the text, not the leading keyword.
+--
+-- The frontier patterns matter: a plain "honor" search also matches
+-- "Honored", which is a reputation level and has nothing to do with PvP.
+--------------------------------------------------------------------------
+
+local PVP_PATTERNS = {
+	"%f[%a]pvp%f[%A]",
+	"%f[%a]arena%f[%A]",
+	"%f[%a]arenas%f[%A]",
+	"battleground",
+	"%f[%a]rated%f[%A]",
+	"%f[%a]honor%f[%A]",
+	"%f[%a]conquest%f[%A]",
+	"marks of honor",
+	"war mode",
+	"gladiator",
+	"rbg",
+}
+
+function Sources:DetectPvP(text)
+	if not text or text == "" then return false end
+	local lower = text:lower()
+	for _, pattern in ipairs(PVP_PATTERNS) do
+		if lower:find(pattern) then return true end
+	end
+	return false
+end
+
+--------------------------------------------------------------------------
 -- Locked content
 --
 -- Plenty of sources sit behind a key, a lockbox or an attunement. We cannot
@@ -133,6 +167,7 @@ function Sources:Parse(text)
 	out.headline = self:Headline(text)
 	out.mapID, out.zoneName = ns.Location:MatchZoneInText(text)
 	out.locked, out.lockNote, out.haveKey = self:DetectLock(text)
+	out.isPvP = self:DetectPvP(text)
 	return out
 end
 
@@ -220,6 +255,7 @@ function Sources:SetCached(kind, id, parsed)
 		h = parsed.headline,
 		l = parsed.locked or nil,
 		n = parsed.lockNote,
+		p = parsed.isPvP or nil,
 	}
 end
 
@@ -232,12 +268,20 @@ function Sources:Resolve(kind, id, textProvider)
 			sourceLabel = cached.k and cached.k:gsub("^%l", string.upper) or "Unknown",
 			headline = cached.h,
 			locked = cached.l, lockNote = cached.n,
+			isPvP = cached.p,
 		}
 	end
 
 	local text = textProvider and textProvider()
 	local parsed = self:Parse(text)
-	self:SetCached(kind, id, parsed)
+
+	-- Only remember a result we actually learned something from. Journals and
+	-- item data load asynchronously, so an early scan can see nothing at all -
+	-- caching that emptiness would leave the entry permanently blank with no
+	-- source, no zone and no way to route to it.
+	if text and text ~= "" then
+		self:SetCached(kind, id, parsed)
+	end
 	return parsed
 end
 

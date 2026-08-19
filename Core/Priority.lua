@@ -37,17 +37,25 @@ local TIER_MULT = {
 
 -- Distance falloff inside the current zone. 0 yards -> 1.6x, 600+ yards -> 1.0x.
 local NEAR_YARDS = 600
+-- Zone-to-zone distances are an order of magnitude larger than in-zone ones.
+local FAR_YARDS  = 6000
 
 local function ProximityFactor(entry)
 	local tier = entry.tier or "world"
 	local mult = TIER_MULT[tier] or 0.25
 
-	if entry.distance and (tier == "here" or tier == "zone") then
+	if entry.x and entry.distance and (tier == "here" or tier == "zone") then
 		local d = math.max(0, math.min(entry.distance, NEAR_YARDS))
 		mult = mult * (1.6 - 0.6 * (d / NEAR_YARDS))
 	elseif (tier == "here" or tier == "zone") and not entry.x then
 		-- In the right zone but we cannot pin it down; still valuable, just less.
 		mult = mult * 0.8
+	elseif tier == "continent" and entry.distance then
+		-- Everything on this continent used to score identically. A zone two
+		-- flights away should beat one on the far side of the map, so the
+		-- approximate zone distance is allowed to separate them.
+		local d = math.max(0, math.min(entry.distance, FAR_YARDS))
+		mult = mult * (1.5 - 0.8 * (d / FAR_YARDS))
 	end
 	return mult
 end
@@ -171,6 +179,9 @@ end
 --------------------------------------------------------------------------
 
 local function Finalise(entry)
+	-- One place decides, so every content type obeys the same switch.
+	if entry.isPvP and not ns.db.includePvP then return false end
+
 	-- Reach / tier
 	local inReach, tier = ns.Location:InReach(entry.mapID)
 	entry.tier = tier
@@ -185,6 +196,11 @@ local function Finalise(entry)
 
 	if entry.x and entry.y and entry.mapID then
 		entry.distance = ns.Location:DistanceToPlayer(entry.mapID, entry.x, entry.y)
+	elseif entry.mapID then
+		-- No exact spot, but we know the zone. A rough distance is far more
+		-- use than a blank column when deciding where to go next.
+		entry.distance = ns.Location:DistanceToZone(entry.mapID)
+		entry.approximateDistance = entry.distance ~= nil or nil
 	end
 
 	if entry.have and entry.need and entry.need > 0 then

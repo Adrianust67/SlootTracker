@@ -42,9 +42,6 @@ ns.defaults = {
 	window = {
 		point = "CENTER", relPoint = "CENTER", x = 0, y = 0,
 		width = 820, height = 560,
-		-- Escape closing the tracker is opt-in: it is a persistent frame, not
-		-- a modal panel, and you press Escape constantly while playing.
-		closeOnEscape = false,
 		-- Remember whether it was open, so it comes back as you left it.
 		shown = false,
 		-- Always open on login, regardless of how you left it.
@@ -62,6 +59,7 @@ ns.defaults = {
 		transmogsets = false,
 		heirlooms    = false,
 		titles       = false,
+		decor        = true,
 	},
 
 	-- How far out we are willing to look.
@@ -112,6 +110,7 @@ ns.defaults = {
 		transmogsets = 0.7,
 		heirlooms    = 0.5,
 		titles       = 0.5,
+		decor        = 1.0,
 	},
 
 	route = {
@@ -134,12 +133,16 @@ ns.defaults = {
 		sound       = false,
 	},
 
+	-- One global switch for everyone who does not PvP. Off hides PvP
+	-- achievements and any collectible whose source is honor, conquest,
+	-- arenas, battlegrounds or rated play.
+	includePvP  = true,
+
 	maxRows     = 300,
 	autoRescan  = true,      -- rescan when the player changes zone
 	debug       = false,
 
 	minimapAngle      = 200,
-	hideMinimapButton = false,
 	ignored           = {},   -- [entryKey] = true
 }
 
@@ -184,6 +187,18 @@ end
 function ns.Try(fn, ...)
 	if type(fn) ~= "function" then return nil end
 	return TryResult(pcall(fn, ...))
+end
+
+-- ns.Try cannot tell "the call failed" from "the call succeeded and returned
+-- nil", because both come back as nil. Plenty of API functions return nothing
+-- at all - SendChatMessage among them - so testing ns.Try's result for nil
+-- reports every successful call as a failure. Use this when the outcome, not
+-- the return value, is what matters.
+--
+-- Returns: ok (boolean), followed by whatever the function returned.
+function ns.TryOk(fn, ...)
+	if type(fn) ~= "function" then return false end
+	return pcall(fn, ...)
 end
 
 function ns.Round(v, places)
@@ -463,8 +478,14 @@ local function InitDB()
 
 	-- Blow away derived caches when the client build changes; achievement
 	-- and map data shift between patches.
-	if ns.db.cache.build ~= ns.build then
-		ns.db.cache = { build = ns.build }
+	--
+	-- The schema number covers the other case: when an addon update changes
+	-- what an index *contains*, a cache built by the old version is stale even
+	-- though the client build is identical. Bump it whenever the shape of
+	-- anything under db.cache changes.
+	local CACHE_SCHEMA = 2
+	if ns.db.cache.build ~= ns.build or ns.db.cache.schema ~= CACHE_SCHEMA then
+		ns.db.cache = { build = ns.build, schema = CACHE_SCHEMA }
 	end
 end
 
@@ -521,7 +542,10 @@ local function Usage()
 end
 
 SlashCmdList.SLOOTTRACKER = function(msg)
-	msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+	-- Keep the original before lowercasing: commands that take free text (the
+	-- guild radar message) must preserve the capitalisation you typed.
+	local msgRaw = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	msg = msgRaw:lower()
 	local cmd, rest = msg:match("^(%S*)%s*(.*)$")
 
 	if cmd == "" then
@@ -552,6 +576,7 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 			ns:Print(("guild radar |cff40ff40on|r - announcing to |cffffd100%s|r"):format(
 				ns.GuildRadar:OutputLabel(ns.db.guildRadar.output)))
 			if ns.GuildRadar:NameplateModeBlocked() then ns.GuildRadar:ExplainNameplates() end
+			if not ns.GuildRadar:TemplateMentionsName() then ns.GuildRadar:ExplainTemplate() end
 		elseif sub == "off" then
 			ns.db.guildRadar.enabled = false
 			ns:Print("guild radar |cffff5555off|r")
@@ -577,6 +602,22 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 			else
 				ns:Print("use: self / guild / say / yell / party / emote")
 			end
+		elseif sub == "msg" or sub == "message" then
+			-- Deliberately uses the raw slash text, not the lowercased command,
+			-- so the message keeps the capitalisation you typed.
+			local raw = (msgRaw or ""):match("^%s*%S+%s+%S+%s+(.*)$")
+			if raw and raw ~= "" then
+				ns.db.guildRadar.template = raw
+				ns:Print("guild radar message set to:")
+				print("  " .. raw)
+				if not ns.GuildRadar:TemplateMentionsName() then
+					ns.GuildRadar:ExplainTemplate()
+				end
+			else
+				ns:Print("current message: " .. (ns.db.guildRadar.template or "(none)"))
+				print("  set it with: |cffffd100/sloot guild msg <text>|r")
+				print("  tokens: |cffffd100%name% %zone% %count% %points% %how%|r")
+			end
 		elseif sub == "mode" then
 			if arg == "zone" or arg == "close" or arg == "both" then
 				ns.db.guildRadar.mode = arg
@@ -590,7 +631,7 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 				ns.db.guildRadar.enabled and "|cff40ff40on|r" or "|cffff5555off|r",
 				ns.db.guildRadar.mode,
 				ns.GuildRadar:OutputLabel(ns.db.guildRadar.output)))
-			print("  on / off / test / reset / mode <zone|close|both> / out <self|guild|say|yell|party|emote>")
+			print("  on / off / test / reset / msg <text> / mode <zone|close|both> / out <self|guild|say|yell|party|emote>")
 		end
 	elseif cmd == "config" or cmd == "options" then
 		ns:Fire("OPEN_CONFIG")

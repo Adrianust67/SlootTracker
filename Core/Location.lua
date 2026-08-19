@@ -277,6 +277,30 @@ function Location:DistanceToPlayer(mapID, x, y)
 	return self:Distance(c.mapID, c.x, c.y, mapID, x, y)
 end
 
+-- Distance to the middle of a zone, for the many things we can place in a zone
+-- but not on a spot - a vendor named in a mount's source text, say. Coarse by
+-- definition, and callers mark it as approximate rather than passing it off as
+-- a real position.
+function Location:DistanceToZone(mapID)
+	if not mapID then return nil end
+	local c = self:Get()
+	if not (c.mapID and c.x and c.y) then return nil end
+	if mapID == c.mapID then return 0 end
+	return self:Distance(c.mapID, c.x, c.y, mapID, 0.5, 0.5)
+end
+
+-- The best position we can offer for an entry: its own if it has one, the
+-- centre of its zone otherwise. Second return says whether it is approximate.
+function Location:BestPosition(entry)
+	if entry.x and entry.y and entry.mapID then
+		return entry.mapID, entry.x, entry.y, false
+	end
+	if entry.mapID then
+		return entry.mapID, 0.5, 0.5, true
+	end
+	return nil
+end
+
 --------------------------------------------------------------------------
 -- Reach: is a given map within the player's configured search radius?
 --
@@ -292,7 +316,21 @@ function Location:ReachTier(mapID)
 	if not mapID or not c.mapID then return nil end
 
 	if mapID == c.mapID then return "here" end
-	if self:IsDescendantOf(mapID, c.mapID) or self:IsDescendantOf(c.mapID, mapID) then return "zone" end
+
+	-- Contained by the current zone - a dungeon or micro map inside it. That
+	-- genuinely is here.
+	if self:IsDescendantOf(mapID, c.mapID) then return "zone" end
+
+	-- The reverse is NOT here, and treating it as such was reporting the whole
+	-- game at "this zone". You are standing inside Kalimdor, and inside Azeroth,
+	-- and inside the cosmic map - but a continent-wide achievement is
+	-- continent-wide, and a world-wide one is world-wide. Rank it by what the
+	-- map actually is.
+	if self:IsDescendantOf(c.mapID, mapID) then
+		local m = self.maps[mapID]
+		if m and m.mapType == Enum_UIMapType.Continent then return "continent" end
+		return "world"
+	end
 
 	local mine, theirs = c.continentID, self:GetContinent(mapID)
 	if mine and theirs and mine == theirs then return "continent" end
@@ -315,10 +353,18 @@ end
 -- Waypoints
 --------------------------------------------------------------------------
 
-function Location:SetWaypoint(mapID, x, y, title)
+function Location:SetWaypoint(mapID, x, y, title, approximate)
 	if not (mapID and x and y) then
-		ns:Print("no coordinates for that entry.")
+		ns:Print("no location known for that entry.")
 		return false
+	end
+
+	-- Say plainly when the pin is the middle of a zone rather than the actual
+	-- spot, so nobody flies to a coordinate expecting to find something there.
+	if approximate then
+		title = (title or "?") .. " (somewhere in this zone)"
+		ns:Print(("|cffff8040approximate|r - pointing at the middle of %s. "
+			.. "The exact spot is not something the game tells addons."):format(self:GetMapName(mapID)))
 	end
 
 	if _G.TomTom and _G.TomTom.AddWaypoint then

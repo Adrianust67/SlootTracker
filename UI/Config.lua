@@ -165,6 +165,40 @@ function Config:Build()
 	local y = -8
 
 	----------------------------------------------------------------
+	y = MakeHeader(content, "Scope", y)
+
+	local scopeNote = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	scopeNote:SetPoint("TOPLEFT", 24, y)
+	scopeNote:SetWidth(PANEL_WIDTH - 80)
+	scopeNote:SetJustifyH("LEFT")
+	scopeNote:SetText("Mounts, toys, pets, transmog, heirlooms and decor are stored account-wide "
+		.. "by the game and are always tracked that way. These two are the only ones where the "
+		.. "choice is real.")
+	y = y - 34
+
+	y = MakeCheck(content, "Achievements: track per character",
+		"On: what THIS character still has left.\n"
+		.. "Off: what the account still has left.\n\n"
+		.. "Achievement credit is account-wide, but the game records which character earned "
+		.. "each one, so both answers are available.",
+		y,
+		function() return ns:ScopeFor("achievements") == "character" end,
+		function(v)
+			ns.db.categoryScope.achievements = v and "character" or "account"
+			ns.db.scope = "auto"
+		end)
+
+	y = MakeCheck(content, "Exploration: track per character",
+		"On: subzones THIS character has never walked into, even if an alt found them.\n"
+		.. "Off: subzones nobody on the account has found.",
+		y,
+		function() return ns:ScopeFor("exploration") == "character" end,
+		function(v)
+			ns.db.categoryScope.exploration = v and "character" or "account"
+			ns.db.scope = "auto"
+		end)
+
+	----------------------------------------------------------------
 	y = y - 8
 	y = MakeHeader(content, "Achievements", y)
 
@@ -427,6 +461,7 @@ function Config:Build()
 		{ "transmogsets", "Transmog sets" },
 		{ "heirlooms",    "Heirlooms" },
 		{ "titles",       "Titles" },
+		{ "decor",        "Housing decor" },
 	}
 
 	for _, cat in ipairs(WEIGHT_CATS) do
@@ -445,30 +480,23 @@ function Config:Build()
 		function() return ns.db.autoRescan end,
 		function(v) ns.db.autoRescan = v end)
 
+	y = MakeCheck(content, "Include PvP content",
+		"Off hides everything tied to PvP across every category at once: PvP "
+		.. "achievements, and any mount, toy, pet or decor whose source is honor, "
+		.. "conquest, arenas, battlegrounds or rated play.\n\n"
+		.. "Achievements are identified by their category, so that part is exact. "
+		.. "Collectibles are identified from their source text, which is a very "
+		.. "good guess but not a guarantee.",
+		y,
+		function() return ns.db.includePvP end,
+		function(v) ns.db.includePvP = v end)
+
 	y = MakeCheck(content, "Open the window when you log in",
 		"On: the tracker opens automatically at login and after a reload.\n\n"
 		.. "Off: it comes back only if it was open when you last logged out.",
 		y,
 		function() return ns.db.window.openOnLogin end,
 		function(v) ns.db.window.openOnLogin = v end)
-
-	y = MakeCheck(content, "Close the tracker window with Escape",
-		"Off (default): Escape leaves the window alone, so it survives everything "
-		.. "Escape does mid-raid. Close it with the X in its corner.\n\n"
-		.. "On: adds it to the game's Escape-dismissable panel list.",
-		y,
-		function() return ns.db.window.closeOnEscape end,
-		function(v)
-			ns.db.window.closeOnEscape = v
-			ns.UI:ApplyEscapeClose()
-		end)
-
-	y = MakeCheck(content, "Hide the minimap button", nil, y,
-		function() return ns.db.hideMinimapButton end,
-		function(v)
-			ns.db.hideMinimapButton = v
-			if ns.minimapButton then ns.minimapButton:SetShown(not v) end
-		end)
 
 	y = MakeCheck(content, "Debug output", "Prints scan diagnostics and shows score breakdowns in tooltips.", y,
 		function() return ns.db.debug end,
