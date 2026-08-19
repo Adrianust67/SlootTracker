@@ -29,7 +29,7 @@ ns.GuildRadar = GuildRadar
 
 local seenAt      = {}    -- [playerName] = GetTime() of last announcement
 local lastAnyAt   = 0     -- global rate limit
-local nameplates  = {}    -- [playerName] = true while their nameplate is up
+local nameplates  = {}    -- [unitToken] = readable name, while their plate is up
 local lastRosterRequest = 0
 
 --------------------------------------------------------------------------
@@ -124,9 +124,17 @@ end
 -- Detection
 --------------------------------------------------------------------------
 
+-- The client can hand back "secret" strings that addons are forbidden to
+-- inspect - nameplate units are one source. A secret string still reports its
+-- type as "string", so a type check does not help; touching it throws. pcall
+-- is the only reliable test, and an unreadable name simply means we cannot
+-- identify that unit.
 local function ShortName(name)
-	if not name then return nil end
-	return (name:match("^([^%-]+)")) or name
+	if type(name) ~= "string" then return nil end
+
+	local ok, short = pcall(string.match, name, "^([^%-]+)")
+	if not ok then return nil end
+	return short
 end
 
 -- Nameplate detection is entirely dependent on friendly player nameplates
@@ -189,8 +197,8 @@ end
 
 -- Guild members currently rendering a nameplate, i.e. actually close.
 local function ScanNameplates(found)
-	for name in pairs(nameplates) do
-		found[name] = { name = name, how = "close" }
+	for _, name in pairs(nameplates) do
+		if name then found[name] = { name = name, how = "close" } end
 	end
 end
 
@@ -264,7 +272,8 @@ ns:RegisterEvent("NAME_PLATE_UNIT_ADDED", function(_, unit)
 	local name = ShortName(UnitName(unit))
 	if not name or name == ns.playerName then return end
 
-	nameplates[name] = true
+	-- Token is the key; the readable name is the value.
+	nameplates[unit] = name
 	local mode = ns.db.guildRadar.mode
 	if mode == "close" or mode == "both" then
 		GuildRadar:Check(false)
@@ -272,9 +281,10 @@ ns:RegisterEvent("NAME_PLATE_UNIT_ADDED", function(_, unit)
 end)
 
 ns:RegisterEvent("NAME_PLATE_UNIT_REMOVED", function(_, unit)
-	if not unit then return end
-	local name = ShortName(UnitName(unit))
-	if name then nameplates[name] = nil end
+	-- Keyed by unit token, so removal never has to read a name. Resolving the
+	-- name here was both redundant and the thing that crashed: the unit is on
+	-- its way out and the client may refuse to let us look at it.
+	if unit then nameplates[unit] = nil end
 end)
 
 ns:On("ZONE_CHANGED", function()

@@ -391,16 +391,38 @@ function Config:Build()
 	templateBox:SetSize(PANEL_WIDTH - 110, 22)
 	templateBox:SetAutoFocus(false)
 	templateBox:SetText(ns.db.guildRadar.template or "")
-	templateBox:SetScript("OnEnterPressed", function(self)
-		ns.db.guildRadar.template = self:GetText()
-		self:ClearFocus()
-		ns:Print("guild radar message updated.")
-	end)
+	-- Committing only on Enter meant typing a message and clicking away threw
+	-- it silently away: the next panel refresh repainted the box from the
+	-- database. Saving on focus loss as well is what people actually expect.
+	local reverting = false
+
+	local function CommitTemplate(self)
+		if reverting then reverting = false return end
+
+		local text = self:GetText() or ""
+		if text == (ns.db.guildRadar.template or "") then return end
+
+		ns.db.guildRadar.template = text
+		ns:Print("guild radar message saved.")
+		if not ns.GuildRadar:TemplateMentionsName() then
+			ns.GuildRadar:ExplainTemplate()
+		end
+	end
+
+	templateBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+	templateBox:SetScript("OnEditFocusLost", CommitTemplate)
 	templateBox:SetScript("OnEscapePressed", function(self)
+		reverting = true
 		self:SetText(ns.db.guildRadar.template or "")
 		self:ClearFocus()
 	end)
-	table.insert(content.controls, function() templateBox:SetText(ns.db.guildRadar.template or "") end)
+
+	table.insert(content.controls, function()
+		-- Never repaint a box the player is typing in.
+		if not templateBox:HasFocus() then
+			templateBox:SetText(ns.db.guildRadar.template or "")
+		end
+	end)
 	y = y - 24
 
 	local tokenHelp = content:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -490,6 +512,16 @@ function Config:Build()
 		y,
 		function() return ns.db.includePvP end,
 		function(v) ns.db.includePvP = v end)
+
+	y = MakeCheck(content, "Get out of the way inside instances",
+		"Closes the window when you enter a dungeon, raid, delve, scenario or "
+		.. "battleground, and reopens it when you leave.\n\n"
+		.. "Opening or closing it yourself always wins: if you reopen it inside an "
+		.. "instance it stays open, and if you close it yourself it stays closed "
+		.. "on the way out.",
+		y,
+		function() return ns.db.window.hideInInstances end,
+		function(v) ns.db.window.hideInInstances = v end)
 
 	y = MakeCheck(content, "Open the window when you log in",
 		"On: the tracker opens automatically at login and after a reload.\n\n"

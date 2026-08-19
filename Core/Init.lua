@@ -46,6 +46,9 @@ ns.defaults = {
 		shown = false,
 		-- Always open on login, regardless of how you left it.
 		openOnLogin = true,
+		-- Step aside inside dungeons, raids, delves and battlegrounds, and come
+		-- back on the way out.
+		hideInInstances = true,
 	},
 
 	-- Which content categories feed the list.

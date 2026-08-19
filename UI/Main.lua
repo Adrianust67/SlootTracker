@@ -14,7 +14,18 @@ local ADDON, ns = ...
 local UI = {}
 ns.UI = UI
 
-local ROW_HEIGHT     = 28
+-- Rows have two shapes. Wide enough, and every column fits on one line. Narrow,
+-- and five columns simply do not fit - so the zone and the progress bar step
+-- aside, the row grows, and the description is allowed to wrap into the space
+-- they left. Wrapping inside the short row was never an option: a second line
+-- would render straight over the row below it.
+local ROW_H_WIDE     = 28
+local ROW_H_NARROW   = 46
+local NARROW_BELOW   = 700
+
+local rowHeight  = ROW_H_WIDE
+local narrowMode = false
+
 local LIST_BOTTOM    = 30
 
 -- Filter grid geometry. The number of columns is derived from the window
@@ -70,6 +81,25 @@ local displayed = {}   -- filtered view of Priority.entries
 local function CategoryColor(entry)
 	local c = CATEGORY_COLORS[entry.category or entry.module] or { 0.8, 0.8, 0.8 }
 	return c[1], c[2], c[3]
+end
+
+-- Who you are logged in as, in class colour. Resolved once and remembered:
+-- the name and class cannot change while you are playing this character.
+local playerLabel
+local function ColouredPlayerName()
+	if playerLabel then return playerLabel end
+
+	local name = ns.playerName or UnitName("player")
+	if not name then return "" end
+
+	local _, class = UnitClass("player")
+	local colour = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+	local hex = colour and (colour.colorStr
+		or (colour.r and ("ff%02x%02x%02x"):format(
+			math.floor(colour.r * 255), math.floor(colour.g * 255), math.floor(colour.b * 255))))
+
+	playerLabel = hex and ("|c%s%s|r"):format(hex, name) or name
+	return playerLabel
 end
 
 local function FormatDistance(entry)
@@ -303,7 +333,6 @@ end
 
 local function CreateRow(parent, index)
 	local row = CreateFrame("Button", nil, parent)
-	row:SetHeight(ROW_HEIGHT)
 	row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
 	row.bg = row:CreateTexture(nil, "BACKGROUND")
@@ -426,7 +455,15 @@ local function UpdateRow(row, entry, rank)
 
 	row.name:SetText(entry.name or "?")
 	row.name:SetTextColor(r, g, b)
-	row.detail:SetText(entry.detail or "")
+
+	-- The narrow shape has no zone column, so the zone rides along at the front
+	-- of the description rather than being lost. Skipped when it is the zone you
+	-- are already standing in, which would just be noise.
+	local detail = entry.detail or ""
+	if narrowMode and entry.zoneName and entry.tier ~= "here" then
+		detail = ("|cff9d9d9d%s|r  %s"):format(entry.zoneName, detail)
+	end
+	row.detail:SetText(detail)
 
 	row.zone:SetText(entry.zoneName or "")
 	local dist = FormatDistance(entry)
@@ -436,7 +473,7 @@ local function UpdateRow(row, entry, rank)
 		row.dist:SetText(dist or (entry.tier == "continent" and "this continent" or ""))
 	end
 
-	if entry.have and entry.need and entry.need > 1 then
+	if entry.have and entry.need and entry.need > 1 and not narrowMode then
 		row.progress:Show()
 		row.progress:SetValue((entry.progress or 0))
 		row.progress:SetStatusBarColor(r, g, b)
@@ -476,6 +513,10 @@ end
 -- strip and the list down to clear however many rows that produced.
 local function LayoutPanels()
 	if not frame or not frame.filterOrder then return end
+
+	-- Row shape is a width decision, same as the filter grid.
+	narrowMode = frame:GetWidth() < NARROW_BELOW
+	rowHeight  = narrowMode and ROW_H_NARROW or ROW_H_WIDE
 
 	local usable = frame:GetWidth() - 32
 
@@ -525,15 +566,54 @@ local function LayoutPanels()
 	end
 end
 
+-- Re-anchor a row's contents for the current shape. Called whenever rows are
+-- laid out, so a resize past the threshold reshapes every existing row rather
+-- than only the ones created afterwards.
+local function ApplyRowShape(row)
+	row:SetHeight(rowHeight)
+
+	row.zone:SetShown(not narrowMode)
+	row.name:ClearAllPoints()
+	row.detail:ClearAllPoints()
+	row.dist:ClearAllPoints()
+
+	if narrowMode then
+		-- Distance keeps its corner; the zone column goes entirely. The
+		-- description then gets the full width of the row to wrap into.
+		row.dist:SetPoint("TOPRIGHT", -10, -4)
+		row.dist:SetWidth(90)
+
+		row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 66, -4)
+		row.name:SetPoint("RIGHT", row.dist, "LEFT", -8, 0)
+
+		row.detail:SetPoint("TOPLEFT", row, "TOPLEFT", 34, -20)
+		row.detail:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+		row.detail:SetWordWrap(true)
+		if row.detail.SetMaxLines then row.detail:SetMaxLines(2) end
+	else
+		row.dist:SetPoint("RIGHT", -90, -6)
+		row.dist:SetWidth(160)
+
+		row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 66, -3)
+		row.name:SetPoint("RIGHT", row.zone, "LEFT", -10, 0)
+
+		row.detail:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -1)
+		row.detail:SetPoint("RIGHT", row.zone, "LEFT", -10, 0)
+		row.detail:SetWordWrap(false)
+		if row.detail.SetMaxLines then row.detail:SetMaxLines(1) end
+	end
+end
+
 local function LayoutRows()
 	local height = frame:GetHeight() - listTopInset - LIST_BOTTOM
-	visibleRows = math.max(1, math.floor(height / ROW_HEIGHT))
+	visibleRows = math.max(1, math.floor(height / rowHeight))
 
 	for i = 1, visibleRows do
 		if not rows[i] then rows[i] = CreateRow(frame.list, i) end
 		local row = rows[i]
+		ApplyRowShape(row)
 		row:ClearAllPoints()
-		row:SetPoint("TOPLEFT", frame.list, "TOPLEFT", 0, -(i - 1) * ROW_HEIGHT)
+		row:SetPoint("TOPLEFT", frame.list, "TOPLEFT", 0, -(i - 1) * rowHeight)
 		row:SetPoint("RIGHT", frame.list, "RIGHT", 0, 0)
 	end
 	UpdateScroll()
@@ -932,9 +1012,10 @@ function UI:Refresh()
 	if not frame or not frame:IsShown() then return end
 
 	local loc = ns.Location:Get()
-	frame.zoneLabel:SetText(("|cffffd100%s|r%s"):format(
+	frame.zoneLabel:SetText(("|cffffd100%s|r%s  |cff707070|||r  %s"):format(
 		loc.zoneName or "?",
-		loc.subZone ~= "" and (" - " .. loc.subZone) or ""))
+		loc.subZone ~= "" and (" - " .. loc.subZone) or "",
+		ColouredPlayerName()))
 
 	RebuildDisplayed()
 	UpdateScroll()
@@ -976,8 +1057,47 @@ function UI:Refresh()
 	end
 end
 
+--------------------------------------------------------------------------
+-- Instances
+--
+-- Inside a dungeon, raid, delve or battleground there is nothing to route to,
+-- so the window gets out of the way and comes back when you leave.
+--
+-- IsInInstance covers every instanced space, which avoids enumerating types
+-- and guessing what a delve reports.
+--
+-- Opening or closing it yourself always wins: a manual action clears the
+-- auto-hidden flag, so the addon will not undo a decision you just made.
+--------------------------------------------------------------------------
+
+local autoHidden    = false
+local wasInInstance = false
+
+local function EvaluateInstanceState()
+	if not frame then return end
+	if not ns.db.window.hideInInstances then return end
+
+	local inInstance = IsInInstance() and true or false
+	if inInstance == wasInInstance then return end
+	wasInInstance = inInstance
+
+	if inInstance then
+		if frame:IsShown() then
+			autoHidden = true
+			frame:Hide()
+			-- Hiding records "closed"; the instance is the reason, not a
+			-- choice, so the remembered state stays open.
+			ns.db.window.shown = true
+		end
+	elseif autoHidden then
+		autoHidden = false
+		UI:Show()
+	end
+end
+
 function UI:Show()
 	self:Build()
+	autoHidden = false   -- you asked for it; do not second-guess later
 	frame:Show()
 	self:SyncFilters()
 	ns:Fire("REQUEST_SCAN")
@@ -987,6 +1107,7 @@ end
 function UI:Toggle()
 	self:Build()
 	if frame:IsShown() then
+		autoHidden = false   -- closed on purpose; stay closed on the way out
 		frame:Hide()
 	else
 		self:Show()
@@ -1066,6 +1187,11 @@ ns:On("PLAYER_READY", function()
 	if frame and (ns.db.window.openOnLogin or frame.restoreShown) then
 		UI:Show()
 	end
+end)
+
+ns:RegisterEvent("PLAYER_ENTERING_WORLD", function()
+	-- Slight delay: instance state is not settled the instant this fires.
+	C_Timer.After(1, EvaluateInstanceState)
 end)
 
 ns:On("TOGGLE_WINDOW", function() UI:Toggle() end)
