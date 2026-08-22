@@ -15,7 +15,7 @@
 	            but only catches people you can actually see.
 	  "both"  - run both; the closer detection wins for a given player.
 
-	On broadcasting: sending to GUILD/SAY/YELL automatically is how people get
+	On broadcasting: sending to a public channel automatically is how people get
 	muted and reported, so the default output is your own chat frame and
 	nothing leaves your client. Broadcasting is opt-in, rate limited globally
 	and per player, and never fires twice for the same person inside the
@@ -38,13 +38,36 @@ local lastRosterRequest = 0
 
 -- "self" never leaves the client. The rest go through SendChatMessage.
 GuildRadar.OUTPUTS = {
-	{ key = "self",  label = "Only me (private)" },
-	{ key = "GUILD", label = "Guild chat" },
-	{ key = "SAY",   label = "Say" },
-	{ key = "YELL",  label = "Yell" },
-	{ key = "PARTY", label = "Party" },
-	{ key = "EMOTE", label = "Emote" },
+	{ key = "self",    label = "Only me (private)" },
+	{ key = "GUILD",   label = "Guild chat" },
+	{ key = "SAY",     label = "Say" },
+	{ key = "CHANNEL", label = "General (zone chat)" },
+	{ key = "EMOTE",   label = "Emote" },
 }
+
+-- The General channel's number is per-zone and shifts as you travel, so it has
+-- to be looked up each time rather than remembered. GetChannelList returns a
+-- flat run of values; older clients give id/name pairs and newer ones add a
+-- disabled flag, so walk it by type rather than assuming a stride.
+local function FindGeneralChannel()
+	local list = { ns.Try(GetChannelList) }
+	if #list == 0 then return nil end
+
+	local wanted = (type(_G.GENERAL) == "string" and _G.GENERAL or "General"):lower()
+
+	local pendingID
+	for _, value in ipairs(list) do
+		if type(value) == "number" then
+			pendingID = value
+		elseif type(value) == "string" and pendingID then
+			local name = value:lower()
+			if name:find(wanted, 1, true) == 1 then return pendingID, value end
+			pendingID = nil
+		end
+	end
+	return nil
+end
+GuildRadar.FindGeneralChannel = FindGeneralChannel
 
 function GuildRadar:OutputLabel(key)
 	for _, def in ipairs(self.OUTPUTS) do
@@ -102,12 +125,22 @@ local function Emit(text)
 	end
 
 	-- Guard the channels that need a valid destination.
-	if output == "PARTY" and not IsInGroup() then
-		ns:Print(text .. " |cff888888(not in a party, shown privately)|r")
-		return true
-	end
 	if output == "GUILD" and not IsInGuild() then
 		return false
+	end
+
+	if output == "CHANNEL" then
+		local index, channelName = FindGeneralChannel()
+		if not index then
+			ns:Print("not in the General channel here - shown privately instead: " .. text)
+			return true
+		end
+		local ok = ns.TryOk(SendChatMessage, text, "CHANNEL", nil, index)
+		if not ok then
+			ns:Print(("could not post to %s - shown here instead: %s"):format(
+				channelName or "General", text))
+		end
+		return true
 	end
 
 	-- TryOk, not Try: SendChatMessage returns nothing, so a nil result means
@@ -163,10 +196,10 @@ function GuildRadar:ExplainNameplates()
 end
 
 -- Ask the server for a fresh roster, but no more than the game allows.
-local function RequestRoster()
+local function RequestRoster(force)
 	if not IsInGuild() then return end
 	local now = GetTime()
-	if (now - lastRosterRequest) < 11 then return end
+	if not force and (now - lastRosterRequest) < 11 then return end
 	lastRosterRequest = now
 
 	if C_GuildInfo and C_GuildInfo.GuildRoster then
@@ -240,6 +273,71 @@ function GuildRadar:Check(force)
 		ns.Try(PlaySound, SOUNDKIT and SOUNDKIT.TELL_MESSAGE or 3081, "Master")
 	end
 
+	-- Count what the announcement path actually saw, which is not necessarily
+	-- what a separate diagnostic sweep would count - and that gap is exactly
+	-- where a bug can hide.
+	local foundCount = 0
+	for _ in pairs(found) do foundCount = foundCount + 1 end
+
+	-- A forced check is a diagnostic, so report what was actually seen rather
+	-- than only the verdict. Guessing at this from the outside has cost us two
+	-- rounds already.
+	if force then
+		local online, sameZone, total = 0, 0, ns.Try(GetNumGuildMembers) or 0
+		local myZone = GetRealZoneText()
+		local samples = {}
+
+		for i = 1, total do
+			local rosterName, _, _, _, _, zone, _, _, isOnline = ns.Try(GetGuildRosterInfo, i)
+			if isOnline then
+				online = online + 1
+				if zone == myZone then
+					sameZone = sameZone + 1
+					local short = ShortName(rosterName)
+					if short and #samples < 4 then table.insert(samples, short) end
+				elseif #samples < 4 and zone and online <= 6 then
+					table.insert(samples, ("%s |cff888888(%s)|r"):format(
+						ShortName(rosterName) or "?", zone or "no zone"))
+				end
+			end
+		end
+
+		local plates = 0
+		for _ in pairs(nameplates) do plates = plates + 1 end
+
+		ns.db.lastGuildTest = {
+			when = date("%Y-%m-%d %H:%M:%S"),
+			mode = cfg.mode, output = cfg.output,
+			template = ns.db.guildRadar.template,
+			zone = myZone, roster = total, online = online,
+			sameZone = sameZone, nameplates = plates,
+			found = foundCount, announced = announced,
+			nameplateCVar = self:FriendlyNameplatesEnabled(),
+			samples = samples,
+		}
+
+		ns:Print("guild radar report:")
+		print(("  in guild: %s   roster entries: %d   online: %d"):format(
+			IsInGuild() and "yes" or "no", total, online))
+		print(("  your zone: |cffffd100%s|r"):format(myZone or "?"))
+		print(("  guildmates the roster puts in your zone: |cffffd100%d|r"):format(sameZone))
+		print(("  guildmates on nameplates right now: |cffffd100%d|r  (friendly nameplates %s)"):format(
+			plates, self:FriendlyNameplatesEnabled() and "on" or "|cffff8040OFF|r"))
+		print(("  the announcer actually saw: |cffffd100%d|r people, announced |cffffd100%d|r"):format(
+			foundCount, announced))
+		print(("  mode: |cffffd100%s|r   announcing to: |cffffd100%s|r"):format(
+			cfg.mode, self:OutputLabel(cfg.output)))
+		print(("  message: %s"):format(ns.db.guildRadar.template or "(none)"))
+		if #samples > 0 then
+			print("  sample of online guildmates: " .. table.concat(samples, ", "))
+		end
+		print("  |cff888888Snapshot saved. /reload and the result is on disk.|r")
+		if total == 0 then
+			print("  |cffff8040The roster is empty - the server has not sent it yet.|r "
+				.. "Open the guild frame once, then try again.")
+		end
+	end
+
 	if force and announced == 0 then
 		local n = 0
 		for _ in pairs(found) do n = n + 1 end
@@ -301,7 +399,16 @@ ns:RegisterEvent("GUILD_ROSTER_UPDATE", function()
 	if mode == "zone" or mode == "both" then GuildRadar:Check(false) end
 end)
 
-ns:On("GUILD_RADAR_CHECK", function(force) GuildRadar:Check(force) end)
+ns:On("GUILD_RADAR_CHECK", function(force)
+	if force then
+		-- Refresh the roster and give the server a moment to answer before
+		-- reporting, so a manual test is not judging stale data.
+		RequestRoster(true)
+		C_Timer.After(1.5, function() GuildRadar:Check(true) end)
+		return
+	end
+	GuildRadar:Check(force)
+end)
 
 ns:On("GUILD_RADAR_RESET", function()
 	wipe(seenAt)

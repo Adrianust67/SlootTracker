@@ -44,7 +44,7 @@ so it matches the `.toc`.
 - `/sloot alert off|all|high|test` — quest alerts (all quests, or level-appropriate only)
 - `/sloot guild on|off|test|reset` — nearby guild member detection
 - `/sloot guild mode zone|close|both` — how "nearby" is measured
-- `/sloot guild out self|guild|say|yell|party|emote` — where it announces
+- `/sloot guild out self|guild|say|general|emote` — where it announces
 - `/sloot reach zone|continent|world` — how far out to look
 - `/sloot route` — print the planned route to chat
 - `/sloot config` — settings
@@ -64,11 +64,15 @@ you get proper crazy-arrow guidance. Without it, the built-in map pin is used.
 Every candidate gets a score:
 
 ```
-score = category weight  ×  proximity  ×  progress  ×  urgency  ×  points
+score = weight × proximity × precision × progress × urgency × points
 ```
 
 - **proximity** dominates. Same zone is worth roughly 3× the same continent, and
-  within a zone the score falls off with distance out to ~600 yards.
+  within a zone the score falls off steeply with distance out to ~800 yards.
+- **precision** is how much we actually know. An exact pin scores 1.00; knowing
+  only the zone scores 0.22. A lead you cannot walk to is a reminder, not an
+  opportunity, so it ranks far below one you can act on.
+
 - **progress** rewards things you have already started. An achievement sitting
   at 9/10 criteria outranks an untouched one, and "one criterion left" gets an
   extra push.

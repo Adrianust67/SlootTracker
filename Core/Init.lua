@@ -141,6 +141,10 @@ ns.defaults = {
 	-- arenas, battlegrounds or rated play.
 	includePvP  = true,
 
+	-- Hard filter: drop anything we can only place to a zone, rather than
+	-- merely ranking it low. Off by default because it hides most collectibles.
+	requireExactLocation = false,
+
 	maxRows     = 300,
 	autoRescan  = true,      -- rescan when the player changes zone
 	debug       = false,
@@ -486,6 +490,14 @@ local function InitDB()
 	-- what an index *contains*, a cache built by the old version is stale even
 	-- though the client build is identical. Bump it whenever the shape of
 	-- anything under db.cache changes.
+	-- Yell and Party were removed as announcement channels. Anyone still set to
+	-- one falls back to private rather than having a public channel chosen for
+	-- them.
+	local radar = ns.db.guildRadar
+	if radar.output == "YELL" or radar.output == "PARTY" then
+		radar.output = "self"
+	end
+
 	local CACHE_SCHEMA = 2
 	if ns.db.cache.build ~= ns.build or ns.db.cache.schema ~= CACHE_SCHEMA then
 		ns.db.cache = { build = ns.build, schema = CACHE_SCHEMA }
@@ -536,7 +548,7 @@ local function Usage()
 	print("  |cffffd100/zc auto|r - scope per category (default)")
 	print("  |cffffd100/zc char|r / |cffffd100/zc account|r - force one scope everywhere")
 	print("  |cffffd100/sloot guild on|off|test|r - nearby guild member detection")
-	print("  |cffffd100/sloot guild out self|guild|say|yell|party|emote|r - where it announces")
+	print("  |cffffd100/sloot guild out self|guild|say|general|emote|r - where it announces")
 	print("  |cffffd100/zc config|r - open settings")
 	print("  |cffffd100/zc reach zone|continent|world|r - how far to look")
 	print("  |cffffd100/zc route|r - print the planned route for this zone")
@@ -591,7 +603,8 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 		elseif sub == "out" or sub == "output" then
 			local map = {
 				self = "self", guild = "GUILD", say = "SAY",
-				yell = "YELL", party = "PARTY", emote = "EMOTE",
+				general = "CHANNEL", zone = "CHANNEL", channel = "CHANNEL",
+				emote = "EMOTE",
 			}
 			local target = map[arg]
 			if target then
@@ -603,7 +616,7 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 						.. "Keep it slow or people will notice.")
 				end
 			else
-				ns:Print("use: self / guild / say / yell / party / emote")
+				ns:Print("use: self / guild / say / general / emote")
 			end
 		elseif sub == "msg" or sub == "message" then
 			-- Deliberately uses the raw slash text, not the lowercased command,
@@ -634,7 +647,7 @@ SlashCmdList.SLOOTTRACKER = function(msg)
 				ns.db.guildRadar.enabled and "|cff40ff40on|r" or "|cffff5555off|r",
 				ns.db.guildRadar.mode,
 				ns.GuildRadar:OutputLabel(ns.db.guildRadar.output)))
-			print("  on / off / test / reset / msg <text> / mode <zone|close|both> / out <self|guild|say|yell|party|emote>")
+			print("  on / off / test / reset / msg <text> / mode <zone|close|both> / out <self|guild|say|general|emote>")
 		end
 	elseif cmd == "config" or cmd == "options" then
 		ns:Fire("OPEN_CONFIG")

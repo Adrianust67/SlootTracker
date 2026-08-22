@@ -246,6 +246,8 @@ local function ShowRowTooltip(row)
 			tostring(entry.mapID), entry.zoneName or "?"), 0.5, 0.5, 0.5, 0.9, 0.9, 0.9)
 		GameTooltip:AddDoubleLine("  weight x proximity",
 			("%.2f x %.2f"):format(p.weight, p.proximity), 0.5, 0.5, 0.5, 0.9, 0.9, 0.9)
+		GameTooltip:AddDoubleLine("  precision",
+			("%.2f"):format(p.precision or 1), 0.5, 0.5, 0.5, 0.9, 0.9, 0.9)
 		GameTooltip:AddDoubleLine("  progress x urgency",
 			("%.2f x %.2f"):format(p.progress, p.urgency), 0.5, 0.5, 0.5, 0.9, 0.9, 0.9)
 		GameTooltip:AddDoubleLine("  points",
@@ -467,10 +469,14 @@ local function UpdateRow(row, entry, rank)
 
 	row.zone:SetText(entry.zoneName or "")
 	local dist = FormatDistance(entry)
-	if entry.tier == "here" and not dist then
-		row.dist:SetText("|cff40ff40this zone|r")
+	row.dist:SetText(dist or (entry.tier == "continent" and "this continent" or "this zone"))
+
+	-- A vague lead must never look like a precise one at a glance: dimmed and
+	-- tilde-prefixed when all we know is the zone.
+	if entry.x and entry.y then
+		row.dist:SetTextColor(0.85, 0.85, 0.85)
 	else
-		row.dist:SetText(dist or (entry.tier == "continent" and "this continent" or ""))
+		row.dist:SetTextColor(0.5, 0.5, 0.5)
 	end
 
 	if entry.have and entry.need and entry.need > 1 and not narrowMode then
@@ -910,7 +916,10 @@ function UI:Build()
 		LayoutRows()
 		-- Persist continuously, not just on grip release, so a size set by any
 		-- means (including an external layout tool) survives a reload.
-		ns.db.window.width, ns.db.window.height = self:GetWidth(), self:GetHeight()
+		local w, h = self:GetWidth(), self:GetHeight()
+		if w >= 560 and h >= 340 then
+			ns.db.window.width, ns.db.window.height = w, h
+		end
 	end)
 
 	-- Hide first, THEN attach the state trackers: this initial Hide would
@@ -942,6 +951,25 @@ function UI:ApplyStoredPosition()
 	local w = ns.db.window
 	frame:ClearAllPoints()
 	frame:SetPoint(w.point or "CENTER", UIParent, w.relPoint or "CENTER", w.x or 0, w.y or 0)
+end
+
+-- Size and position together, re-applied from the database.
+--
+-- Build already does this, but other addons initialise after us - a layout
+-- manager reapplying its own idea of where our frame belongs, for instance -
+-- and whatever runs last wins. Rather than guess who moved it, we simply put
+-- it back once everything has settled.
+function UI:RestoreGeometry()
+	if not frame then return end
+	local w = ns.db.window
+
+	local width  = math.max(560, w.width or 820)
+	local height = math.max(340, w.height or 560)
+	frame:SetSize(width, height)
+	self:ApplyStoredPosition()
+
+	ns:Debug(("geometry restored: %dx%d at %s %d,%d"):format(
+		width, height, w.point or "CENTER", w.x or 0, w.y or 0))
 end
 
 function UI:GetFrame()
@@ -1187,6 +1215,12 @@ ns:On("PLAYER_READY", function()
 	if frame and (ns.db.window.openOnLogin or frame.restoreShown) then
 		UI:Show()
 	end
+
+	-- Other addons position frames on their own schedule, and whoever runs last
+	-- wins. Rather than guess who moved ours, put it back once the dust has
+	-- settled. Twice, because layout managers can be late.
+	C_Timer.After(2, function() UI:RestoreGeometry() end)
+	C_Timer.After(6, function() UI:RestoreGeometry() end)
 end)
 
 ns:RegisterEvent("PLAYER_ENTERING_WORLD", function()

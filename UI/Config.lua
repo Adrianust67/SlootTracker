@@ -380,9 +380,16 @@ function Config:Build()
 	y = y - 18
 
 	local templateBox, boxTemplated = ns.SafeFrame("EditBox", nil, content, "InputBoxTemplate")
+
+	-- Set the font unconditionally. An EditBox with no font object holds its
+	-- text perfectly and draws nothing at all - an empty-looking box with the
+	-- value intact. Relying on the template to provide one is exactly the kind
+	-- of assumption this UI has already broken twice.
+	templateBox:SetFontObject("ChatFontNormal")
+	templateBox:SetTextColor(1, 1, 1)
+	templateBox:SetTextInsets(6, 6, 0, 0)
+
 	if not boxTemplated then
-		templateBox:SetFontObject("ChatFontNormal")
-		templateBox:SetTextInsets(6, 6, 0, 0)
 		local boxBG = templateBox:CreateTexture(nil, "BACKGROUND")
 		boxBG:SetAllPoints()
 		boxBG:SetColorTexture(0, 0, 0, 0.5)
@@ -512,6 +519,16 @@ function Config:Build()
 		y,
 		function() return ns.db.includePvP end,
 		function(v) ns.db.includePvP = v end)
+
+	y = MakeCheck(content, "Only list things with an exact location",
+		"Anything we can place to a zone but not to a spot is already ranked far "
+		.. "down the list. This drops it entirely.\n\n"
+		.. "Strongest setting for \"show me what I can walk to right now\", but it "
+		.. "hides most collectibles: the game rarely says where a mount or toy "
+		.. "actually drops, only which zone.",
+		y,
+		function() return ns.db.requireExactLocation end,
+		function(v) ns.db.requireExactLocation = v end)
 
 	y = MakeCheck(content, "Get out of the way inside instances",
 		"Closes the window when you enter a dungeon, raid, delve, scenario or "

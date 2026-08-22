@@ -7,7 +7,7 @@
 	produced its score so the tooltip can justify the ranking instead of
 	handing the player an opaque number.
 
-	    score = weight x proximity x progress x urgency
+	    score = weight x proximity x precision x progress x urgency x points
 
 	Proximity dominates, because the whole point is "what can I finish from
 	where I am standing".
@@ -36,20 +36,40 @@ local TIER_MULT = {
 }
 
 -- Distance falloff inside the current zone. 0 yards -> 1.6x, 600+ yards -> 1.0x.
-local NEAR_YARDS = 600
+local NEAR_YARDS = 800
 -- Zone-to-zone distances are an order of magnitude larger than in-zone ones.
 local FAR_YARDS  = 6000
+
+-- How much we actually know about where to go.
+--
+-- This is the difference between "there is a chest at 42.1, 63.8" and "this is
+-- somewhere in Duskwood". The second is not an opportunity you can act on; it
+-- is a reminder. The whole point of the addon is spotting things that are
+-- close and cheap, so a lead you cannot walk to has to rank far below one you
+-- can, even when the vague one is nominally nearer.
+local function PrecisionFactor(entry)
+	if entry.x and entry.y then return 1.0 end
+
+	-- No fixed spot means the best we can offer is the middle of a zone, which
+	-- is not a lead - it is a note saying "something is somewhere around here".
+	-- The addon exists to surface what you missed for the least effort, and
+	-- effort starts with knowing where to walk. These sink hard.
+	return 0.12
+end
 
 local function ProximityFactor(entry)
 	local tier = entry.tier or "world"
 	local mult = TIER_MULT[tier] or 0.25
 
 	if entry.x and entry.distance and (tier == "here" or tier == "zone") then
+		-- Steeper than it was, and over a longer range: something 50 yards away
+		-- should clearly beat the same thing 700 yards away.
 		local d = math.max(0, math.min(entry.distance, NEAR_YARDS))
-		mult = mult * (1.6 - 0.6 * (d / NEAR_YARDS))
+		mult = mult * (2.2 - 1.5 * (d / NEAR_YARDS))
 	elseif (tier == "here" or tier == "zone") and not entry.x then
-		-- In the right zone but we cannot pin it down; still valuable, just less.
-		mult = mult * 0.8
+		-- In the right zone but we cannot pin it down. PrecisionFactor already
+		-- discounts this heavily; no need to punish it twice.
+		mult = mult * 1.0
 	elseif tier == "continent" and entry.distance then
 		-- Everything on this continent used to score identically. A zone two
 		-- flights away should beat one on the far side of the map, so the
@@ -141,15 +161,16 @@ function Priority:Score(entry)
 	local weight = (ns.db.weights[weightKey] or ns.db.weights[entry.module] or 1.0)
 
 	local prox   = ProximityFactor(entry)
+	local prec   = PrecisionFactor(entry)
 	local prog   = ProgressFactor(entry)
 	local urg    = UrgencyFactor(entry)
 	local points = PointsFactor(entry)
 
 	entry.scoreParts = {
-		weight = weight, proximity = prox, progress = prog,
+		weight = weight, proximity = prox, precision = prec, progress = prog,
 		urgency = urg, points = points,
 	}
-	entry.score = weight * prox * prog * urg * points * 100
+	entry.score = weight * prox * prec * prog * urg * points * 100
 	return entry.score
 end
 
@@ -181,6 +202,9 @@ end
 local function Finalise(entry)
 	-- One place decides, so every content type obeys the same switch.
 	if entry.isPvP and not ns.db.includePvP then return false end
+
+	-- Nothing to walk to, and the player asked not to be shown those at all.
+	if ns.db.requireExactLocation and not (entry.x and entry.y) then return false end
 
 	-- Reach / tier
 	local inReach, tier = ns.Location:InReach(entry.mapID)
